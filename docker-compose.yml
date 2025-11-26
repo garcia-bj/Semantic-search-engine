@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: semantic_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: semantic_user
+      POSTGRES_PASSWORD: semantic_password
+      POSTGRES_DB: semantic_search
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - semantic_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  semantic_network:
+    driver: bridge
