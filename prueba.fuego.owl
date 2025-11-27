@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:ex="http://example.org/test#">
+
+  <rdf:Description rdf:about="http://example.org/test#ProyectoSecreto">
+    <ex:nombre>Operación Fénix</ex:nombre>
+    <ex:estado>Clasificado</ex:estado>
+    <ex:pistaOculta>El águila ha aterrizado en el nido</ex:pistaOculta>
+  </rdf:Description>
+
+</rdf:RDF>

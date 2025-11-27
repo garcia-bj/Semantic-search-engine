@@ -1,147 +1,79 @@
-# Semantic Search Engine
+# Buscador Semántico
 
-A semantic search engine built with Nest.js and Next.js that allows you to upload OWL/RDF files, perform ontological queries, and integrate with DBpedia.
+Este proyecto es un motor de búsqueda semántico avanzado diseñado para gestionar y consultar bases de conocimiento en formato OWL/RDF. Permite a los usuarios subir archivos de ontologías, procesarlos para extraer tripletas (sujeto, predicado, objeto) y realizar búsquedas semánticas sobre estos datos.
 
-## Tech Stack
+## Características Principales
 
-- **Backend**: Nest.js, Prisma, PostgreSQL
-- **Frontend**: Next.js, Shadcn UI, Tailwind CSS
-- **Database**: PostgreSQL (Docker)
-- **ORM**: Prisma
-- **RDF Parser**: n3
+### 1. Gestión de Base de Conocimiento
+- **Carga de Archivos OWL/RDF**: Sube tus archivos de ontología directamente desde la interfaz web.
+- **Procesamiento Automático**: El sistema parsea automáticamente los archivos subidos (soporta RDF/XML) y almacena las tripletas en una base de datos relacional optimizada.
+- **Listado de Documentos**: Visualiza todos los archivos subidos y gestiona tu base de conocimiento.
+- **Eliminación de Archivos**: Elimina documentos y sus tripletas asociadas cuando ya no sean necesarios.
 
-## Prerequisites
+### 2. Búsqueda Semántica
+- **Buscador Inteligente**: Realiza consultas sobre los datos almacenados.
+- **Integración con DBpedia**: (En desarrollo) Capacidad para extender las búsquedas a la base de conocimiento de DBpedia.
 
-- Node.js 18+ and npm
-- Docker and Docker Compose
-- Git
+### 3. Interfaz Moderna
+- **Diseño Responsivo**: Interfaz de usuario construida con Next.js y TailwindCSS, ofreciendo una experiencia fluida y moderna.
+- **Multilenguaje**: Soporte nativo para español.
 
-## Getting Started
+## Tecnologías Utilizadas
 
-### 1. Clone the Repository
+### Backend
+- **NestJS**: Framework de Node.js para construir aplicaciones del lado del servidor eficientes y escalables.
+- **Prisma**: ORM de próxima generación para Node.js y TypeScript.
+- **PostgreSQL**: Sistema de gestión de bases de datos relacional de objetos.
+- **rdflib**: Librería para el procesamiento y manejo de datos RDF (soporte para RDF/XML).
+- **Docker**: Contenerización de la base de datos para un despliegue sencillo.
 
-```bash
-git clone <repository-url>
-cd BUSCADOR_SEMANTICO
-```
+### Frontend
+- **Next.js 16**: Framework de React para producción.
+- **React 19**: Biblioteca de JavaScript para construir interfaces de usuario.
+- **TailwindCSS 4**: Framework de CSS de utilidad primero para un diseño rápido y personalizado.
+- **TypeScript**: Superset tipado de JavaScript.
 
-### 2. Start the Database
+## Configuración e Instalación
 
-Start PostgreSQL and pgAdmin using Docker Compose:
+### Requisitos Previos
+- Node.js (v18 o superior)
+- Docker y Docker Compose
+- npm
 
-```bash
-docker-compose up -d
-```
+### Pasos para Ejecutar
 
-This will start:
-- **PostgreSQL** on `localhost:5432`
-- **pgAdmin** on `http://localhost:5050`
+1.  **Clonar el repositorio**
+    ```bash
+    git clone <url-del-repositorio>
+    cd BUSCADOR_SEMANTICO
+    ```
 
+2.  **Configurar el Backend**
+    ```bash
+    cd backend
+    npm install
+    # Asegúrate de tener el archivo .env configurado con la URL de tu base de datos
+    # Iniciar la base de datos con Docker
+    docker-compose up -d
+    # Ejecutar migraciones de Prisma
+    npx prisma migrate dev
+    # Iniciar el servidor de desarrollo
+    npm run start:dev
+    ```
 
+3.  **Configurar el Frontend**
+    ```bash
+    cd ../frontend
+    npm install
+    # Iniciar el servidor de desarrollo
+    npm run dev
+    ```
 
-### 3. Setup Backend
+4.  **Acceder a la Aplicación**
+    - Abre tu navegador y visita `http://localhost:3000`.
 
-```bash
-cd backend
+## Uso
 
-# Install dependencies
-npm install
-
-# Copy environment variables
-cp .env.example .env
-
-# Run database migrations
-npx prisma migrate dev --name init
-
-# Start the backend
-npm run start:dev
-```
-
-The backend will be available at `http://localhost:3001`
-
-### 4. Setup Frontend
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start the frontend
-npm run dev
-```
-
-The frontend will be available at `http://localhost:3000`
-
-## Database Management
-
-
-
-### Prisma Studio
-
-You can also use Prisma Studio to view and edit your database:
-
-```bash
-cd backend
-npx prisma studio
-```
-
-## Features
-
-- ✅ Upload OWL/RDF files as knowledge base
-- ✅ Perform semantic/ontological queries
-- ✅ DBpedia integration for ontology population
-- ✅ Multilingual support
-
-## Project Structure
-
-```
-BUSCADOR_SEMANTICO/
-├── backend/              # Nest.js backend
-│   ├── src/
-│   │   ├── upload/      # File upload service
-│   │   ├── search/      # Semantic search service
-│   │   ├── dbpedia/     # DBpedia integration
-│   │   └── prisma/      # Database service
-│   └── prisma/
-│       └── schema.prisma
-├── frontend/            # Next.js frontend
-│   └── src/
-│       └── app/
-└── docker-compose.yml   # Database setup
-```
-
-## Development
-
-### Backend Commands
-
-```bash
-# Development
-npm run start:dev
-
-# Build
-npm run build
-
-# Production
-npm run start:prod
-
-# Tests
-npm run test
-```
-
-### Frontend Commands
-
-```bash
-# Development
-npm run dev
-
-# Build
-npm run build
-
-# Production
-npm run start
-```
-
-## License
-
-MIT
+1.  Ve a la sección de **Base de Conocimiento**.
+2.  Haz clic en **Subir OWL/RDF** y selecciona tu archivo `.owl`.
+3.  Una vez procesado, puedes ir al **Buscador** e ingresar términos para explorar las relaciones semánticas extraídas de tu ontología.
