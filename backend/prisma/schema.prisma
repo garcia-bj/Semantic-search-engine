@@ -8,11 +8,11 @@ datasource db {
 }
 
 model Document {
-  id            String   @id @default(uuid())
-  filename      String
-  cloudinaryUrl String?
-  tripleCount   Int      @default(0)
-  createdAt     DateTime @default(now())
+  id          String   @id @default(uuid())
+  filename    String
+  filePath    String?
+  tripleCount Int      @default(0)
+  createdAt   DateTime @default(now())
 
   @@map("documents")
 }

@@ -18,58 +18,62 @@ export class OntologyService {
   ) { }
 
   async uploadOwlDocument(file: Express.Multer.File) {
-    try {
-      const fileContent = await readFile(file.path, "utf-8");
+    const fileContent = await readFile(file.path, "utf-8");
 
-      const store = $rdf.graph();
-      const contentType = "application/rdf+xml";
-      const baseUrl = `http://localhost/uploads/${file.filename}`;
-
-      const document = await new Promise((resolve, reject) => {
-        try {
-          $rdf.parse(fileContent, store, baseUrl, contentType, async (err) => {
-            if (err) {
-              reject(new Error(`Failed to parse RDF: ${err}`));
-              return;
-            }
-
-            const triples = store.statements.map((statement) => ({
-              subject: statement.subject.value,
-              predicate: statement.predicate.value,
-              object: statement.object.value,
-              language: (statement.object as any).language || null,
-            }));
-
-            try {
-              const doc = await this.saveDocument(
-                file.originalname,
-                triples,
-                fileContent,
-              );
-              resolve(doc);
-            } catch (error) {
-              reject(error);
-            }
-          });
-        } catch (e) {
-          reject(new Error(`Failed to parse RDF: ${e.message}`));
-        }
-      });
-
-      return document;
-    } finally {
-      // Limpiar archivo temporal siempre, ocurra error o no
-      try {
-        await unlink(file.path);
-        this.logger.log(`Temporary file deleted: ${file.path}`);
-      } catch (err) {
-        this.logger.warn(`Failed to delete temporary file ${file.path}:`, err);
+    // Verificar si es OWL/XML (no soportado por rdflib)
+    if (fileContent.includes("<Ontology") || fileContent.includes("<owl:Ontology")) {
+      // Si no tiene rdf:RDF, es probable que sea OWL/XML puro
+      if (!fileContent.includes("<rdf:RDF")) {
+        throw new Error(
+          "El formato OWL/XML no es soportado directamente. Por favor, abra su archivo en Protege y guárdelo como 'RDF/XML Syntax' antes de subirlo.",
+        );
       }
     }
+
+    this.logger.log(`Parsing file: ${file.filename}, Content start: ${fileContent.substring(0, 200)}`);
+
+    const store = $rdf.graph();
+    const contentType = "application/rdf+xml";
+    const baseUrl = `http://localhost/uploads/${file.filename}`;
+
+    const document = await new Promise((resolve, reject) => {
+      try {
+        $rdf.parse(fileContent, store, baseUrl, contentType, async (err) => {
+          if (err) {
+            reject(new Error(`Failed to parse RDF: ${err}`));
+            return;
+          }
+
+          const triples = store.statements.map((statement) => ({
+            subject: statement.subject.value,
+            predicate: statement.predicate.value,
+            object: statement.object.value,
+            language: (statement.object as any).language || null,
+          }));
+
+          try {
+            const doc = await this.saveDocument(
+              file.originalname,
+              file.path,
+              triples,
+              fileContent,
+            );
+            resolve(doc);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      } catch (e) {
+        reject(new Error(`Failed to parse RDF: ${e.message}`));
+      }
+    });
+
+    return document;
   }
 
   private async saveDocument(
     filename: string,
+    filePath: string,
     triples: any[],
     rdfContent: string,
   ) {
@@ -78,12 +82,13 @@ export class OntologyService {
       const document = await this.prisma.document.create({
         data: {
           filename,
+          filePath,
           tripleCount: triples.length,
         },
       });
 
       this.logger.log(
-        `Document metadata saved: ${document.id} with ${triples.length} triples`,
+        `Document metadata saved: ${document.id} with ${triples.length} triples at ${filePath}`,
       );
 
       // 2. Guardar tripletas en Fuseki
