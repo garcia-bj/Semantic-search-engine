@@ -16,8 +16,42 @@ services:
     networks:
       - semantic_network
 
+  fuseki:
+    image: stain/jena-fuseki:latest
+    container_name: semantic_fuseki
+    restart: unless-stopped
+    environment:
+      ADMIN_PASSWORD: admin123
+      JVM_ARGS: -Xmx2g
+    ports:
+      - "3030:3030"
+    volumes:
+      - fuseki_data:/fuseki
+    networks:
+      - semantic_network
+
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: semantic_elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - semantic_network
+
 volumes:
   postgres_data:
+    driver: local
+  fuseki_data:
+    driver: local
+  elasticsearch_data:
     driver: local
 
 networks:

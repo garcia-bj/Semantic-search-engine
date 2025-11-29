@@ -5,6 +5,12 @@
     "compilerOptions": {
         "deleteOutDir": false,
         "webpack": false,
-        "tsConfigPath": "tsconfig.build.json"
+        "tsConfigPath": "tsconfig.build.json",
+        "assets": [
+            {
+                "include": "i18n/**/*",
+                "outDir": "dist"
+            }
+        ]
     }
 }

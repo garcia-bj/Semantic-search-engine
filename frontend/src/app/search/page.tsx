@@ -17,11 +17,13 @@ interface SearchResult {
     subject: string;
     predicate: string;
     object: string;
-    document: {
+    document?: {
         id: string;
         filename: string;
     };
 }
+
+
 
 export default function SearchPage() {
     const [query, setQuery] = useState('');
@@ -321,7 +323,7 @@ export default function SearchPage() {
                                                             Base de Conocimiento
                                                         </span>
                                                         <span className="text-xs text-slate-500">
-                                                            {result.document.filename}
+                                                            {result.document?.filename || 'Documento General'}
                                                         </span>
                                                     </div>
                                                     <h3 className="text-xl font-bold text-purple-300 mb-3">{result.subject}</h3>

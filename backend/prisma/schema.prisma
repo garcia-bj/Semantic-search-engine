@@ -11,27 +11,8 @@ model Document {
   id            String   @id @default(uuid())
   filename      String
   cloudinaryUrl String?
+  tripleCount   Int      @default(0)
   createdAt     DateTime @default(now())
-  triples       Triple[]
 
   @@map("documents")
-}
-
-model Triple {
-  id         String   @id @default(uuid())
-  subject    String
-  predicate  String
-  object     String
-  documentId String
-  isInferred Boolean  @default(false)
-  language   String?
-  createdAt  DateTime @default(now())
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-
-  @@index([subject])
-  @@index([predicate])
-  @@index([object])
-  @@index([language])
-  @@index([documentId])
-  @@map("triples")
 }

@@ -1,0 +1,24 @@
+{
+    "search": {
+        "success": "Búsqueda completada exitosamente",
+        "noResults": "No se encontraron resultados",
+        "error": "Error al realizar la búsqueda",
+        "searching": "Buscando...",
+        "resultsFound": "{{count}} resultados encontrados"
+    },
+    "upload": {
+        "success": "Archivo subido correctamente",
+        "error": "Error al subir el archivo",
+        "processing": "Procesando archivo...",
+        "invalidFormat": "Formato de archivo no válido. Solo se permiten archivos OWL/RDF"
+    },
+    "document": {
+        "deleted": "Documento eliminado correctamente",
+        "notFound": "Documento no encontrado",
+        "error": "Error al procesar el documento"
+    },
+    "validation": {
+        "required": "Este campo es requerido",
+        "invalidUri": "URI no válida"
+    }
+}

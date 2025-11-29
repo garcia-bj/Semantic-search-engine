@@ -10,11 +10,11 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { UploadService } from "./upload.service";
+import { OntologyService } from "./ontology.service";
 
 @Controller("upload")
-export class UploadController {
-  constructor(private readonly uploadService: UploadService) {}
+export class OntologyController {
+  constructor(private readonly ontologyService: OntologyService) { }
 
   @Post()
   @UseInterceptors(FileInterceptor("file"))
@@ -24,7 +24,7 @@ export class UploadController {
     }
 
     try {
-      const document = await this.uploadService.uploadOwlDocument(file);
+      const document = await this.ontologyService.uploadOwlDocument(file);
       return {
         message: "File uploaded and processed successfully",
         document,
@@ -39,13 +39,13 @@ export class UploadController {
 
   @Get("documents")
   async getDocuments() {
-    return this.uploadService.getDocuments();
+    return this.ontologyService.getDocuments();
   }
 
   @Delete("documents/:id")
   async deleteDocument(@Param("id") id: string) {
     try {
-      await this.uploadService.deleteDocument(id);
+      await this.ontologyService.deleteDocument(id);
       return { message: "Document deleted successfully" };
     } catch (error) {
       throw new HttpException(

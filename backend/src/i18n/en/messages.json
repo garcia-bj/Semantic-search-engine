@@ -1,0 +1,24 @@
+{
+    "search": {
+        "success": "Search completed successfully",
+        "noResults": "No results found",
+        "error": "Error performing search",
+        "searching": "Searching...",
+        "resultsFound": "{{count}} results found"
+    },
+    "upload": {
+        "success": "File uploaded successfully",
+        "error": "Error uploading file",
+        "processing": "Processing file...",
+        "invalidFormat": "Invalid file format. Only OWL/RDF files are allowed"
+    },
+    "document": {
+        "deleted": "Document deleted successfully",
+        "notFound": "Document not found",
+        "error": "Error processing document"
+    },
+    "validation": {
+        "required": "This field is required",
+        "invalidUri": "Invalid URI"
+    }
+}

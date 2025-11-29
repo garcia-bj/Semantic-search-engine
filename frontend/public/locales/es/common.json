@@ -1,0 +1,39 @@
+{
+    "nav": {
+        "home": "Inicio",
+        "search": "Buscador",
+        "knowledge": "Base de Conocimiento"
+    },
+    "home": {
+        "title": "Buscador Semántico",
+        "subtitle": "Motor de búsqueda inteligente para bases de conocimiento OWL/RDF",
+        "getStarted": "Comenzar",
+        "features": "Características"
+    },
+    "search": {
+        "title": "Buscador Semántico",
+        "placeholder": "Buscar en la base de conocimiento...",
+        "button": "Buscar",
+        "results": "Resultados",
+        "noResults": "No se encontraron resultados",
+        "searching": "Buscando...",
+        "resultsCount": "{{count}} resultados encontrados"
+    },
+    "knowledge": {
+        "title": "Base de Conocimiento",
+        "upload": "Subir Archivo",
+        "uploadButton": "Seleccionar Archivo OWL/RDF",
+        "documents": "Documentos",
+        "noDocuments": "No hay documentos subidos",
+        "delete": "Eliminar",
+        "triples": "tripletas"
+    },
+    "common": {
+        "loading": "Cargando...",
+        "error": "Error",
+        "success": "Éxito",
+        "cancel": "Cancelar",
+        "save": "Guardar",
+        "close": "Cerrar"
+    }
+}

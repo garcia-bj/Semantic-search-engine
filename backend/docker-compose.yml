@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: semantic-search-es
+    environment:
+      - node.name=es01
+      - cluster.name=semantic-search-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - semantic-net
+
+  fuseki:
+    image: stain/jena-fuseki
+    container_name: semantic-search-fuseki
+    ports:
+      - "3030:3030"
+    environment:
+      - ADMIN_PASSWORD=admin123
+    volumes:
+      - fuseki_data:/fuseki
+    command: /jena-fuseki/fuseki-server --file=/fuseki/config.ttl /semantic-search
+    networks:
+      - semantic-net
+
+volumes:
+  es_data:
+  fuseki_data:
+
+
+networks:
+  semantic-net:
+    driver: bridge
