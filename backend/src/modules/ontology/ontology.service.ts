@@ -18,57 +18,104 @@ export class OntologyService {
   ) { }
 
   async uploadOwlDocument(file: Express.Multer.File) {
-    const fileContent = await readFile(file.path, "utf-8");
+    let filePathToProcess = file.path;
+    let isConverted = false;
 
-    // Verificar si es OWL/XML (no soportado por rdflib)
-    if (fileContent.includes("<Ontology") || fileContent.includes("<owl:Ontology")) {
-      // Si no tiene rdf:RDF, es probable que sea OWL/XML puro
-      if (!fileContent.includes("<rdf:RDF")) {
-        throw new Error(
-          "El formato OWL/XML no es soportado directamente. Por favor, abra su archivo en Protege y guárdelo como 'RDF/XML Syntax' antes de subirlo.",
-        );
+    try {
+      let fileContent = await readFile(file.path, "utf-8");
+
+      // Verificar si es OWL/XML (no soportado por rdflib)
+      if (fileContent.includes("<Ontology") || fileContent.includes("<owl:Ontology")) {
+        if (!fileContent.includes("<rdf:RDF")) {
+          this.logger.log("OWL/XML format detected. Converting to RDF/XML using Python script...");
+          try {
+            const { exec } = require('child_process');
+            const util = require('util');
+            const execPromise = util.promisify(exec);
+
+            // Ruta al script de Python (usando process.cwd() para mayor robustez)
+            const scriptPath = require('path').join(process.cwd(), 'scripts', 'convert_owl.py');
+
+            this.logger.log(`Executing Python script at: ${scriptPath}`);
+
+            // Ejecutar script
+            const { stdout, stderr } = await execPromise(`python "${scriptPath}" "${file.path}"`);
+
+            if (stderr && stderr.trim().length > 0) {
+              this.logger.warn(`Python script warning/error: ${stderr}`);
+            }
+
+            const convertedFilePath = stdout.trim();
+            this.logger.log(`Conversion successful. New file: ${convertedFilePath}`);
+
+            // Actualizar variables para procesar el archivo convertido
+            filePathToProcess = convertedFilePath;
+            fileContent = await readFile(convertedFilePath, "utf-8");
+            isConverted = true;
+
+          } catch (conversionError) {
+            this.logger.error(`Failed to convert OWL/XML: ${conversionError.message}`);
+            throw new Error("Failed to convert OWL/XML file. Please ensure Python and owlready2 are installed.");
+          }
+        }
+      }
+
+      this.logger.log(`Parsing file: ${file.filename}, Content start: ${fileContent.substring(0, 200)}`);
+
+      const store = $rdf.graph();
+      const contentType = "application/rdf+xml";
+      const baseUrl = `http://localhost/uploads/${file.filename}`;
+
+      const document = await new Promise((resolve, reject) => {
+        try {
+          $rdf.parse(fileContent, store, baseUrl, contentType, async (err) => {
+            if (err) {
+              reject(new Error(`Failed to parse RDF: ${err}`));
+              return;
+            }
+
+            const triples = store.statements.map((statement) => ({
+              subject: statement.subject.value,
+              predicate: statement.predicate.value,
+              object: statement.object.value,
+              language: (statement.object as any).language || null,
+            }));
+
+            try {
+              const doc = await this.saveDocument(
+                file.originalname,
+                file.path, // Guardamos la ruta original
+                triples,
+                fileContent,
+              );
+              resolve(doc);
+            } catch (error) {
+              reject(error);
+            }
+          });
+        } catch (e) {
+          reject(new Error(`Failed to parse RDF: ${e.message}`));
+        }
+      });
+
+      return document;
+    } finally {
+      // Limpiar archivo temporal original
+      try {
+        await unlink(file.path);
+      } catch (err) {
+        this.logger.warn(`Failed to delete original file ${file.path}:`, err);
+      }
+
+      // Limpiar archivo convertido si existe
+      if (isConverted && filePathToProcess !== file.path) {
+        try {
+          await unlink(filePathToProcess);
+        } catch (err) {
+          this.logger.warn(`Failed to delete converted file ${filePathToProcess}:`, err);
+        }
       }
     }
-
-    this.logger.log(`Parsing file: ${file.filename}, Content start: ${fileContent.substring(0, 200)}`);
-
-    const store = $rdf.graph();
-    const contentType = "application/rdf+xml";
-    const baseUrl = `http://localhost/uploads/${file.filename}`;
-
-    const document = await new Promise((resolve, reject) => {
-      try {
-        $rdf.parse(fileContent, store, baseUrl, contentType, async (err) => {
-          if (err) {
-            reject(new Error(`Failed to parse RDF: ${err}`));
-            return;
-          }
-
-          const triples = store.statements.map((statement) => ({
-            subject: statement.subject.value,
-            predicate: statement.predicate.value,
-            object: statement.object.value,
-            language: (statement.object as any).language || null,
-          }));
-
-          try {
-            const doc = await this.saveDocument(
-              file.originalname,
-              file.path,
-              triples,
-              fileContent,
-            );
-            resolve(doc);
-          } catch (error) {
-            reject(error);
-          }
-        });
-      } catch (e) {
-        reject(new Error(`Failed to parse RDF: ${e.message}`));
-      }
-    });
-
-    return document;
   }
 
   private async saveDocument(

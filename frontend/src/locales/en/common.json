@@ -1,0 +1,39 @@
+{
+    "nav": {
+        "home": "Home",
+        "search": "Search",
+        "knowledge": "Knowledge Base"
+    },
+    "home": {
+        "title": "Semantic Search",
+        "subtitle": "Intelligent search engine for OWL/RDF knowledge bases",
+        "getStarted": "Get Started",
+        "features": "Features"
+    },
+    "search": {
+        "title": "Semantic Search",
+        "placeholder": "Search in knowledge base...",
+        "button": "Search",
+        "results": "Results",
+        "noResults": "No results found",
+        "searching": "Searching...",
+        "resultsCount": "{{count}} results found"
+    },
+    "knowledge": {
+        "title": "Knowledge Base",
+        "upload": "Upload File",
+        "uploadButton": "Select OWL/RDF File",
+        "documents": "Documents",
+        "noDocuments": "No documents uploaded",
+        "delete": "Delete",
+        "triples": "triples"
+    },
+    "common": {
+        "loading": "Loading...",
+        "error": "Error",
+        "success": "Success",
+        "cancel": "Cancel",
+        "save": "Save",
+        "close": "Close"
+    }
+}

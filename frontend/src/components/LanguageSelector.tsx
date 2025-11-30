@@ -1,29 +1,44 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { usePathname } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import { Locale } from '@/lib/i18n';
 
-export default function LanguageSelector() {
+interface LanguageSelectorProps {
+  currentLang: Locale;
+}
+
+export default function LanguageSelector({ currentLang }: LanguageSelectorProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const changeLanguage = (locale: string) => {
-    const currentPath = pathname.replace(/^\/(es|en)/, '');
-    router.push(`/${locale}${currentPath}`);
+  const switchLanguage = (newLang: Locale) => {
+    // Replace the language segment in the path
+    const segments = pathname.split('/');
+    segments[1] = newLang;
+    const newPath = segments.join('/');
+    router.push(newPath);
   };
 
-  const currentLocale = pathname.startsWith('/en') ? 'en' : 'es';
-
   return (
-    <div className="flex items-center gap-2">
-      <select
-        value={currentLocale}
-        onChange={(e) => changeLanguage(e.target.value)}
-        className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white backdrop-blur-sm hover:bg-white/20 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500"
+    <div className="flex gap-2 bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-full p-1">
+      <button
+        onClick={() => switchLanguage('es')}
+        className={`px-4 py-2 rounded-full font-medium transition-all ${currentLang === 'es'
+            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+            : 'text-slate-400 hover:text-white'
+          }`}
       >
-        <option value="es">🇪🇸 Español</option>
-        <option value="en">🇬🇧 English</option>
-      </select>
+        🇪🇸 ES
+      </button>
+      <button
+        onClick={() => switchLanguage('en')}
+        className={`px-4 py-2 rounded-full font-medium transition-all ${currentLang === 'en'
+            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+            : 'text-slate-400 hover:text-white'
+          }`}
+      >
+        🇬🇧 EN
+      </button>
     </div>
   );
 }
