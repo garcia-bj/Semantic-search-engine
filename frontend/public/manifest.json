@@ -1,12 +1,20 @@
 {
-    "name": "Buscador Semántico",
-    "short_name": "Semantic Search",
-    "description": "Motor de búsqueda semántico para bases de conocimiento OWL/RDF",
+    "name": "Synapse Search - Buscador Semántico",
+    "short_name": "Synapse Search",
+    "description": "Motor de búsqueda semántica inteligente para bases de conocimiento OWL/RDF con integración DBpedia",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#0f172a",
     "theme_color": "#8b5cf6",
     "orientation": "portrait-primary",
+    "scope": "/",
+    "lang": "es",
+    "dir": "ltr",
+    "categories": [
+        "education",
+        "productivity",
+        "utilities"
+    ],
     "icons": [
         {
             "src": "/icon-192x192.png",
@@ -19,6 +27,36 @@
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any maskable"
+        },
+        {
+            "src": "/apple-touch-icon.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "apple-touch-icon"
         }
-    ]
+    ],
+    "screenshots": [
+        {
+            "src": "/icon-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "form_factor": "wide"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Búsqueda",
+            "short_name": "Buscar",
+            "description": "Ir a la página de búsqueda",
+            "url": "/es/search",
+            "icons": [
+                {
+                    "src": "/icon-192x192.png",
+                    "sizes": "192x192"
+                }
+            ]
+        }
+    ],
+    "related_applications": [],
+    "prefer_related_applications": false
 }
