@@ -52,3 +52,18 @@ model DBpediaCache {
   @@index([verified])
   @@map("dbpedia_cache")
 }
+
+model TranslationCache {
+  id          String   @id @default(uuid())
+  originalText String
+  translatedText String
+  sourceLang  String   // 'en', 'es', 'auto'
+  targetLang  String   // 'en', 'es'
+  source      String   // 'manual', 'libretranslate', 'dictionary'
+  createdAt   DateTime @default(now())
+  
+  @@unique([originalText, targetLang])
+  @@index([originalText])
+  @@index([sourceLang, targetLang])
+  @@map("translation_cache")
+}

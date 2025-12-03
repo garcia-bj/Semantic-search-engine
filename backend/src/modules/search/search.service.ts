@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SparqlService } from '../sparql/sparql.service';
 import { ElasticsearchService } from '../elasticsearch/elasticsearch.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
+import { TranslationService } from '../translation/translation.service';
 import { QueryExpansionService } from './query-expansion.service';
 import { SemanticRanking } from './ranking/semantic-ranking';
 import { SearchResult } from './ranking/relevance-scoring';
@@ -17,6 +18,7 @@ export interface SemanticSearchOptions {
   language?: string;
   useEmbeddings?: boolean;
   useQueryExpansion?: boolean;
+  useTranslation?: boolean;
   minScore?: number;
 }
 
@@ -30,13 +32,14 @@ export class SearchService {
     private elasticsearchService: ElasticsearchService,
     private embeddingsService: EmbeddingsService,
     private queryExpansionService: QueryExpansionService,
+    private translationService: TranslationService,
     private prisma: PrismaService,
   ) {
     this.semanticRanking = new SemanticRanking();
   }
 
   /**
-   * Búsqueda semántica mejorada con embeddings y expansión de consultas
+   * Búsqueda semántica mejorada con embeddings, expansión de consultas y traducción
    */
   async semanticSearch(
     query: string,
@@ -46,32 +49,48 @@ export class SearchService {
       language,
       useEmbeddings = true,
       useQueryExpansion = true,
+      useTranslation = true,
       minScore = 0.5,
     } = options;
 
     try {
       const totalDocuments = await this.getTotalDocuments();
       let allResults: SearchResult[] = [];
+      let searchQueries: string[] = [query]; // Incluir query original
 
-      // 1. Búsqueda vectorial con embeddings (si está disponible)
-      if (useEmbeddings && this.embeddingsService.isAvailable()) {
-        const vectorResults = await this.vectorSearch(query, language, minScore);
-        allResults.push(...vectorResults);
-        this.logger.log(`Vector search returned ${vectorResults.length} results`);
+      // 0. Traducción multiidioma (si está habilitado)
+      if (useTranslation) {
+        try {
+          const translations = await this.translationService.translateToMultipleLanguages(query);
+          searchQueries = [...new Set([...searchQueries, ...translations])];
+          this.logger.log(`Searching with translations: ${searchQueries.join(', ')}`);
+        } catch (error) {
+          this.logger.warn(`Translation failed: ${error.message}, continuing with original query`);
+        }
       }
 
-      // 2. Búsqueda con expansión de consultas
-      if (useQueryExpansion) {
-        const expandedResults = await this.expandedSearch(query, language);
-        allResults.push(...expandedResults);
-        this.logger.log(`Expanded search returned ${expandedResults.length} results`);
-      }
+      // Buscar con cada variante de la query (original + traducciones)
+      for (const searchQuery of searchQueries) {
+        // 1. Búsqueda vectorial con embeddings (si está disponible)
+        if (useEmbeddings && this.embeddingsService.isAvailable()) {
+          const vectorResults = await this.vectorSearch(searchQuery, language, minScore);
+          allResults.push(...vectorResults);
+          this.logger.log(`Vector search for "${searchQuery}" returned ${vectorResults.length} results`);
+        }
 
-      // 3. Búsqueda SPARQL tradicional (fallback)
-      const sparqlResults = await this.sparqlService.searchTriples(query, language);
-      const traditionalResults = await this.convertSparqlResults(sparqlResults);
-      allResults.push(...traditionalResults);
-      this.logger.log(`Traditional search returned ${traditionalResults.length} results`);
+        // 2. Búsqueda con expansión de consultas
+        if (useQueryExpansion) {
+          const expandedResults = await this.expandedSearch(searchQuery, language);
+          allResults.push(...expandedResults);
+          this.logger.log(`Expanded search for "${searchQuery}" returned ${expandedResults.length} results`);
+        }
+
+        // 3. Búsqueda SPARQL tradicional
+        const sparqlResults = await this.sparqlService.searchTriples(searchQuery, language);
+        const traditionalResults = await this.convertSparqlResults(sparqlResults);
+        allResults.push(...traditionalResults);
+        this.logger.log(`Traditional search for "${searchQuery}" returned ${traditionalResults.length} results`);
+      }
 
       // 4. Eliminar duplicados
       const uniqueResults = this.deduplicateResults(allResults);
@@ -84,7 +103,7 @@ export class SearchService {
       );
 
       this.logger.log(
-        `Semantic search for "${query}" returned ${rankedResults.length} unique results`,
+        `Semantic search for "${query}" (with ${searchQueries.length} variants) returned ${rankedResults.length} unique results`,
       );
 
       return rankedResults;

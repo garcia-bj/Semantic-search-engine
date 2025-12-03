@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: semantic-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: semantic_search
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - dev-network
+
+  # Apache Jena Fuseki (SPARQL Server)
+  fuseki:
+    image: stain/jena-fuseki:latest
+    container_name: semantic-dev-fuseki
+    restart: unless-stopped
+    environment:
+      ADMIN_PASSWORD: admin123
+      JVM_ARGS: "-Xmx2g"
+    ports:
+      - "3030:3030"
+    volumes:
+      - fuseki_dev_data:/fuseki
+    networks:
+      - dev-network
+
+  # Elasticsearch (for vector search)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: semantic-dev-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_dev_data:/usr/share/elasticsearch/data
+    networks:
+      - dev-network
+
+  # LibreTranslate (Translation Service)
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    container_name: semantic-dev-translator
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    environment:
+      LT_LOAD_ONLY: en,es
+      LT_UPDATE_MODELS: "true"
+    volumes:
+      - libretranslate_dev_data:/home/libretranslate/.local
+    networks:
+      - dev-network
+
+networks:
+  dev-network:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  fuseki_dev_data:
+    driver: local
+  elasticsearch_dev_data:
+    driver: local
+  libretranslate_dev_data:
+    driver: local

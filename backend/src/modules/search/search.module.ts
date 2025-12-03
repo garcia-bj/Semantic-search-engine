@@ -5,10 +5,17 @@ import { SparqlModule } from '../sparql/sparql.module';
 import { ElasticsearchModule } from '../elasticsearch/elasticsearch.module';
 import { PrismaModule } from '../database/prisma.module';
 import { EmbeddingsModule } from '../embeddings/embeddings.module';
+import { TranslationModule } from '../translation/translation.module';
 import { QueryExpansionService } from './query-expansion.service';
 
 @Module({
-  imports: [forwardRef(() => SparqlModule), ElasticsearchModule, PrismaModule, EmbeddingsModule],
+  imports: [
+    forwardRef(() => SparqlModule),
+    ElasticsearchModule,
+    PrismaModule,
+    EmbeddingsModule,
+    TranslationModule,
+  ],
   controllers: [SearchController],
   providers: [SearchService, QueryExpansionService],
   exports: [SearchService],

@@ -5,6 +5,7 @@ import { OntologyModule } from "./modules/ontology/ontology.module";
 import { SearchModule } from "./modules/search/search.module";
 import { DbpediaModule } from "./modules/dbpedia/dbpedia.module";
 import { DBpediaCacheModule } from "./modules/dbpedia-cache/dbpedia-cache.module";
+import { TranslationModule } from "./modules/translation/translation.module";
 import { AppController } from "./app.controller";
 import { I18nModule, AcceptLanguageResolver } from 'nestjs-i18n';
 import * as path from 'path';
@@ -27,6 +28,7 @@ import * as path from 'path';
     SearchModule,
     DbpediaModule,
     DBpediaCacheModule,
+    TranslationModule,
   ],
   controllers: [AppController],
 })
