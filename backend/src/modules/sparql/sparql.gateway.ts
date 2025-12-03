@@ -77,7 +77,7 @@ export class SparqlGateway {
                     });
                     results = await this.searchService.semanticSearch(
                         data.query,
-                        data.language,
+                        { language: data.language },
                     );
             }
 

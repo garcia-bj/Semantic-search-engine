@@ -410,6 +410,120 @@ PORT=3001
 
 ---
 
+## 🐳 Despliegue a Producción con Docker
+
+### Requisitos de Python
+
+El backend **requiere Python 3.x y la librería `owlready2`** para convertir archivos OWL/XML a RDF/XML. Con Docker, esto se maneja automáticamente.
+
+### Dockerfile Multi-Stage
+
+El proyecto incluye un [`Dockerfile`](./Dockerfile) optimizado que:
+- ✅ Instala Node.js 20 (Alpine Linux)
+- ✅ Instala Python 3 y pip
+- ✅ Instala `owlready2` automáticamente
+- ✅ Copia el script `convert_owl.py`
+- ✅ Compila TypeScript en una etapa separada
+- ✅ Genera una imagen final optimizada (~200MB)
+
+### Despliegue Rápido
+
+#### Opción 1: Docker Compose (Recomendado)
+
+Desde la raíz del proyecto:
+
+```bash
+# Linux/Mac
+chmod +x deploy.sh
+./deploy.sh
+
+# Windows
+.\deploy.ps1
+```
+
+O manualmente:
+
+```bash
+# Construir y levantar todos los servicios
+docker-compose up --build -d
+
+# Ver logs
+docker-compose logs -f backend
+
+# Verificar que Python está disponible
+docker exec semantic_backend python3 --version
+docker exec semantic_backend pip3 list | grep owlready2
+```
+
+#### Opción 2: Solo Backend
+
+```bash
+cd backend
+
+# Construir imagen
+docker build -t semantic-backend:latest .
+
+# Ejecutar contenedor
+docker run -d \
+  --name semantic_backend \
+  -p 3001:3001 \
+  -e DATABASE_URL="postgresql://user:pass@host:5432/db" \
+  -e FUSEKI_URL="http://fuseki:3030" \
+  -e ELASTICSEARCH_NODE="http://elasticsearch:9200" \
+  semantic-backend:latest
+```
+
+### Variables de Entorno para Producción
+
+Copia `.env.production.example` como `.env` y configura:
+
+```env
+NODE_ENV=production
+PORT=3001
+DATABASE_URL=postgresql://semantic_user:semantic_password@postgres:5432/semantic_search
+FUSEKI_URL=http://fuseki:3030
+FUSEKI_DATASET=semantic
+ELASTICSEARCH_NODE=http://elasticsearch:9200
+```
+
+### Plataformas de Hosting
+
+#### Railway
+```bash
+railway login
+railway init
+railway up
+```
+
+#### Render
+- Conectar repositorio de GitHub
+- Seleccionar "Docker" como tipo de servicio
+- Render detectará el Dockerfile automáticamente
+
+#### AWS ECS / Azure Container Instances
+1. Construir imagen localmente
+2. Subir a ECR/ACR
+3. Crear servicio con la imagen
+
+### Verificación Post-Despliegue
+
+```bash
+# Health check
+curl http://localhost:3001/health
+
+# Verificar Python
+docker exec semantic_backend python3 --version
+
+# Verificar owlready2
+docker exec semantic_backend pip3 show owlready2
+
+# Probar conversión
+curl -X POST http://localhost:3001/ontology/upload \
+  -F "file=@test.owl"
+```
+
+---
+
 ## 🛡️ Seguridad y Producción
 
 **Para producción, asegúrate de**:
@@ -419,6 +533,8 @@ PORT=3001
 - Usar HTTPS
 - Implementar rate limiting
 - Validar y sanitizar inputs
+- **Verificar que Python y owlready2 están instalados correctamente**
+
 
 ---
 

@@ -21,6 +21,7 @@
     },
     "dependencies": {
         "@elastic/elasticsearch": "^8.12.0",
+        "@nestjs/axios": "^3.0.1",
         "@nestjs/common": "^10.3.0",
         "@nestjs/config": "^3.1.1",
         "@nestjs/core": "^10.3.0",
@@ -31,7 +32,9 @@
         "axios": "^1.6.5",
         "class-transformer": "^0.5.1",
         "class-validator": "^0.14.0",
+        "compromise": "^14.10.0",
         "n3": "^1.17.2",
+        "natural": "^6.10.0",
         "nestjs-i18n": "^10.5.1",
         "rdflib": "^2.3.0",
         "reflect-metadata": "^0.1.13",

@@ -8,11 +8,30 @@ datasource db {
 }
 
 model Document {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   filename    String
-  filePath    String?
-  tripleCount Int      @default(0)
-  createdAt   DateTime @default(now())
+  filePath    String
+  tripleCount Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  
+  // Campos para ranking de popularidad
+  accessCount Int       @default(0)
+  lastAccess  DateTime?
 
+  @@index([filename])
+  @@index([createdAt])
   @@map("documents")
+}
+
+model Embedding {
+  id        String   @id @default(uuid())
+  text      String
+  embedding Float[]
+  model     String
+  createdAt DateTime @default(now())
+
+  @@unique([text, model])
+  @@index([text])
+  @@index([model])
 }

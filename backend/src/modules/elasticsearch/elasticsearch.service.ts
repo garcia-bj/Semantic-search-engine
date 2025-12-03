@@ -9,6 +9,7 @@ export interface TripleDocument {
     language?: string;
     documentId?: string;
     text: string; // Campo combinado para búsqueda full-text
+    embedding?: number[]; // Vector embedding para búsqueda semántica
 }
 
 @Injectable()
@@ -44,6 +45,12 @@ export class ElasticsearchService implements OnModuleInit {
                                 language: { type: 'keyword' },
                                 documentId: { type: 'keyword' },
                                 text: { type: 'text' },
+                                embedding: {
+                                    type: 'dense_vector',
+                                    dims: 384, // Dimensión del modelo paraphrase-multilingual-MiniLM-L12-v2
+                                    index: true,
+                                    similarity: 'cosine',
+                                },
                                 suggest: {
                                     type: 'completion',
                                     analyzer: 'simple',
@@ -215,6 +222,154 @@ export class ElasticsearchService implements OnModuleInit {
         } catch (error) {
             this.logger.error(`Failed to delete triples: ${error.message}`);
             throw error;
+        }
+    }
+
+    /**
+     * Indexar tripletas con embeddings para búsqueda vectorial
+     */
+    async indexTriplesWithEmbeddings(
+        triples: TripleDocument[],
+        embeddings: Map<string, number[]>,
+    ): Promise<void> {
+        try {
+            const operations = triples.flatMap((triple) => {
+                const text = `${triple.subject} ${triple.predicate} ${triple.object}`;
+                const embedding = embeddings.get(text);
+
+                return [
+                    { index: { _index: this.indexName } },
+                    {
+                        ...triple,
+                        text,
+                        embedding,
+                        suggest: {
+                            input: [triple.subject, triple.predicate, triple.object],
+                            weight: 1,
+                        },
+                    },
+                ];
+            });
+
+            const result = await this.client.bulk({ operations });
+
+            if (result.errors) {
+                this.logger.warn('Some documents with embeddings failed to index');
+            } else {
+                this.logger.log(
+                    `Indexed ${triples.length} triples with embeddings successfully`,
+                );
+            }
+        } catch (error) {
+            this.logger.error(`Bulk indexing with embeddings failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Búsqueda por similitud vectorial usando embeddings
+     */
+    async searchBySimilarity(
+        queryEmbedding: number[],
+        language?: string,
+        minScore: number = 0.7,
+    ): Promise<any[]> {
+        try {
+            const filter: any[] = [];
+
+            if (language) {
+                filter.push({ term: { language } });
+            }
+
+            const result = await this.client.search({
+                index: this.indexName,
+                body: {
+                    query: {
+                        script_score: {
+                            query: filter.length > 0 ? { bool: { filter } } : { match_all: {} },
+                            script: {
+                                source:
+                                    "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                                params: {
+                                    query_vector: queryEmbedding,
+                                },
+                            },
+                        },
+                    },
+                    min_score: minScore + 1.0, // +1.0 porque el script suma 1
+                    size: elasticsearchConfig.search.maxResults,
+                },
+            });
+
+            return result.hits.hits.map((hit: any) => ({
+                ...hit._source,
+                score: hit._score - 1.0, // Restar 1 para obtener el score real
+            }));
+        } catch (error) {
+            this.logger.error(`Vector search failed: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Búsqueda híbrida: combina búsqueda full-text y vectorial
+     */
+    async hybridSearch(
+        query: string,
+        queryEmbedding: number[],
+        language?: string,
+    ): Promise<any[]> {
+        try {
+            const filter: any[] = [];
+
+            if (language) {
+                filter.push({ term: { language } });
+            }
+
+            const result = await this.client.search({
+                index: this.indexName,
+                body: {
+                    query: {
+                        bool: {
+                            should: [
+                                // Búsqueda full-text (30% del peso)
+                                {
+                                    multi_match: {
+                                        query,
+                                        fields: ['subject^3', 'predicate^2', 'object', 'text'],
+                                        fuzziness: elasticsearchConfig.search.fuzziness,
+                                        boost: 0.3,
+                                    },
+                                },
+                                // Búsqueda vectorial (70% del peso)
+                                {
+                                    script_score: {
+                                        query: { match_all: {} },
+                                        script: {
+                                            source:
+                                                "cosineSimilarity(params.query_vector, 'embedding') * 0.7",
+                                            params: {
+                                                query_vector: queryEmbedding,
+                                            },
+                                        },
+                                    },
+                                },
+                            ],
+                            filter,
+                            minimum_should_match: 1,
+                        },
+                    },
+                    size: elasticsearchConfig.search.maxResults,
+                },
+            });
+
+            return result.hits.hits.map((hit: any) => ({
+                ...hit._source,
+                score: hit._score,
+            }));
+        } catch (error) {
+            this.logger.error(`Hybrid search failed: ${error.message}`);
+            return [];
         }
     }
 }

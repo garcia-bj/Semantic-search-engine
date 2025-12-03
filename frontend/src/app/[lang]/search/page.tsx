@@ -166,7 +166,7 @@ export default function SearchPage() {
         try {
             // Ejecutar búsquedas en paralelo
             const [localRes, dbpediaRes] = await Promise.all([
-                fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`),
+                fetch(`${API_URL}/search?query=${encodeURIComponent(query)}`),
                 searchDBpedia(query, lang)
             ]);
 

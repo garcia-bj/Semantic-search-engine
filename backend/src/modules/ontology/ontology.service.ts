@@ -1,6 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { SparqlService } from "../sparql/sparql.service";
+import { EmbeddingsService } from "../embeddings/embeddings.service";
+import { ElasticsearchService } from "../elasticsearch/elasticsearch.service";
 import * as $rdf from "rdflib";
 import * as fs from "fs";
 import { promisify } from "util";
@@ -15,6 +17,8 @@ export class OntologyService {
   constructor(
     private prisma: PrismaService,
     private sparqlService: SparqlService,
+    private embeddingsService: EmbeddingsService,
+    private elasticsearchService: ElasticsearchService,
   ) { }
 
   async uploadOwlDocument(file: Express.Multer.File) {
@@ -150,9 +154,78 @@ export class OntologyService {
         );
       }
 
+      // 3. Generar embeddings e indexar en Elasticsearch (si está disponible)
+      if (this.embeddingsService.isAvailable()) {
+        try {
+          await this.indexDocumentWithEmbeddings(document.id, triples);
+        } catch (indexError) {
+          this.logger.warn(
+            `Failed to index with embeddings: ${indexError.message}. Document saved but semantic search may be limited.`,
+          );
+        }
+      } else {
+        this.logger.warn(
+          'Embedding service not available. Document saved but semantic search will be limited.',
+        );
+      }
+
       return document;
     } catch (error) {
       throw new Error(`Failed to save document: ${error.message}`);
+    }
+  }
+
+  /**
+   * Indexa un documento con embeddings en Elasticsearch
+   */
+  private async indexDocumentWithEmbeddings(
+    documentId: string,
+    triples: any[],
+  ): Promise<void> {
+    try {
+      // Extraer textos únicos de las tripletas
+      const textsToEmbed = new Set<string>();
+
+      for (const triple of triples) {
+        const text = `${triple.subject} ${triple.predicate} ${triple.object}`.trim();
+        if (text.length > 0) {
+          textsToEmbed.add(text);
+        }
+      }
+
+      const uniqueTexts = Array.from(textsToEmbed);
+      this.logger.log(`Generating embeddings for ${uniqueTexts.length} unique texts`);
+
+      // Generar embeddings en batch
+      const embeddings = await this.embeddingsService.generateEmbeddings(uniqueTexts);
+
+      // Preparar documentos para Elasticsearch
+      const esDocuments = triples.map((triple) => {
+        const text = `${triple.subject} ${triple.predicate} ${triple.object}`.trim();
+        const embedding = embeddings.get(text);
+
+        return {
+          subject: triple.subject,
+          predicate: triple.predicate,
+          object: triple.object,
+          language: triple.language,
+          documentId,
+          text,
+          embedding,
+        };
+      });
+
+      // Indexar en Elasticsearch
+      await this.elasticsearchService.indexTriplesWithEmbeddings(
+        esDocuments,
+        embeddings,
+      );
+
+      this.logger.log(
+        `Successfully indexed ${esDocuments.length} triples with embeddings for document ${documentId}`,
+      );
+    } catch (error) {
+      throw new Error(`Failed to index with embeddings: ${error.message}`);
     }
   }
 

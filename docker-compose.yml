@@ -46,6 +46,31 @@ services:
     networks:
       - semantic_network
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: semantic_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://semantic_user:semantic_password@postgres:5432/semantic_search
+      FUSEKI_URL: http://fuseki:3030
+      FUSEKI_DATASET: semantic
+      ELASTICSEARCH_NODE: http://elasticsearch:9200
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - postgres
+      - fuseki
+      - elasticsearch
+    networks:
+      - semantic_network
+    command: sh -c "npx prisma migrate deploy && node dist/main"
+
 volumes:
   postgres_data:
     driver: local

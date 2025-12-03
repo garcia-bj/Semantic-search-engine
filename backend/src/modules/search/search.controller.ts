@@ -14,12 +14,12 @@ export class SearchController {
    * GET /search?q=term&lang=es
    */
   @Get()
-  async search(@Query("q") query: string, @Query("lang") language?: string) {
+  async search(@Query("query") query: string, @Query("language") language?: string) {
     if (!query) {
       return { results: [] };
     }
 
-    const results = await this.searchService.semanticSearch(query, language);
+    const results = await this.searchService.semanticSearch(query, { language });
     return { results, count: results.length };
   }
 

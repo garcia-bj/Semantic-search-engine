@@ -171,6 +171,77 @@ npm start
 
 ---
 
+## 🚀 Despliegue a Producción
+
+El proyecto está completamente preparado para despliegue en producción con **Docker**, incluyendo Python y todas las dependencias necesarias.
+
+### Opciones de Despliegue
+
+#### 🚂 Railway (Recomendado para Principiantes)
+Plataforma managed con deploy automático desde GitHub.
+
+**Ventajas:**
+- ✅ Deploy en 15 minutos
+- ✅ PostgreSQL incluido
+- ✅ SSL y dominios automáticos
+- ✅ $5 de crédito gratis mensual
+
+**Costo:** ~$7-15/mes
+
+📖 **[Ver Manual Completo de Railway](./docs/RAILWAY.md)**
+
+---
+
+#### 🐳 Dokploy (Recomendado para Producción)
+Plataforma self-hosted en tu propio servidor VPS.
+
+**Ventajas:**
+- ✅ Control total
+- ✅ Todos los servicios incluidos (Fuseki, Elasticsearch, PostgreSQL)
+- ✅ Costo fijo predecible
+- ✅ Sin vendor lock-in
+
+**Costo:** ~$6-12/mes (solo VPS)
+
+📖 **[Ver Manual Completo de Dokploy](./docs/DOKPLOY.md)**
+
+---
+
+#### 📊 Comparativa
+
+| Característica | Railway | Dokploy |
+|----------------|---------|---------|
+| **Facilidad** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Costo** | Variable | Fijo |
+| **Control** | Limitado | Total |
+| **Setup** | 15 min | 1 hora |
+
+📖 **[Ver Comparativa Detallada](./docs/COMPARATIVA.md)**
+
+---
+
+### Despliegue Rápido con Docker
+
+```bash
+# Opción 1: Script automatizado (Windows)
+.\deploy.ps1
+
+# Opción 2: Script automatizado (Linux/Mac)
+chmod +x deploy.sh
+./deploy.sh
+
+# Opción 3: Manual
+docker-compose up --build -d
+```
+
+**Servicios incluidos:**
+- Backend (Node.js + Python + owlready2)
+- PostgreSQL
+- Apache Fuseki
+- Elasticsearch
+
+---
+
 ## 🔒 Seguridad y Producción
 
 **Para producción, asegúrate de**:
@@ -180,6 +251,7 @@ npm start
 - Usar HTTPS (requerido para PWA)
 - Implementar rate limiting
 - Validar y sanitizar inputs
+
 
 ---
 

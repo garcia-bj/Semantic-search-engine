@@ -1,13 +1,23 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { SparqlService } from "../sparql/sparql.service";
-import { SemanticRanking } from "./ranking/semantic-ranking";
-import { SearchResult } from "./ranking/relevance-scoring";
-import { PrismaService } from "../database/prisma.service";
+import { Injectable, Logger } from '@nestjs/common';
+import { SparqlService } from '../sparql/sparql.service';
+import { ElasticsearchService } from '../elasticsearch/elasticsearch.service';
+import { EmbeddingsService } from '../embeddings/embeddings.service';
+import { QueryExpansionService } from './query-expansion.service';
+import { SemanticRanking } from './ranking/semantic-ranking';
+import { SearchResult } from './ranking/relevance-scoring';
+import { PrismaService } from '../database/prisma.service';
 
 export interface SearchPattern {
   subject?: string;
   predicate?: string;
   object?: string;
+}
+
+export interface SemanticSearchOptions {
+  language?: string;
+  useEmbeddings?: boolean;
+  useQueryExpansion?: boolean;
+  minScore?: number;
 }
 
 @Injectable()
@@ -17,44 +27,189 @@ export class SearchService {
 
   constructor(
     private sparqlService: SparqlService,
+    private elasticsearchService: ElasticsearchService,
+    private embeddingsService: EmbeddingsService,
+    private queryExpansionService: QueryExpansionService,
     private prisma: PrismaService,
   ) {
     this.semanticRanking = new SemanticRanking();
   }
 
   /**
-   * Búsqueda semántica simple (texto libre)
+   * Búsqueda semántica mejorada con embeddings y expansión de consultas
    */
-  async semanticSearch(query: string, language?: string): Promise<SearchResult[]> {
+  async semanticSearch(
+    query: string,
+    options: SemanticSearchOptions = {},
+  ): Promise<SearchResult[]> {
+    const {
+      language,
+      useEmbeddings = true,
+      useQueryExpansion = true,
+      minScore = 0.5,
+    } = options;
+
     try {
       const totalDocuments = await this.getTotalDocuments();
+      let allResults: SearchResult[] = [];
 
-      // Ejecutar búsqueda SPARQL
-      const results = await this.sparqlService.searchTriples(query, language);
+      // 1. Búsqueda vectorial con embeddings (si está disponible)
+      if (useEmbeddings && this.embeddingsService.isAvailable()) {
+        const vectorResults = await this.vectorSearch(query, language, minScore);
+        allResults.push(...vectorResults);
+        this.logger.log(`Vector search returned ${vectorResults.length} results`);
+      }
 
-      // Convertir resultados de SPARQL a SearchResult
-      const searchResults = this.convertSparqlResults(results);
+      // 2. Búsqueda con expansión de consultas
+      if (useQueryExpansion) {
+        const expandedResults = await this.expandedSearch(query, language);
+        allResults.push(...expandedResults);
+        this.logger.log(`Expanded search returned ${expandedResults.length} results`);
+      }
 
-      // Aplicar ranking semántico
+      // 3. Búsqueda SPARQL tradicional (fallback)
+      const sparqlResults = await this.sparqlService.searchTriples(query, language);
+      const traditionalResults = this.convertSparqlResults(sparqlResults);
+      allResults.push(...traditionalResults);
+      this.logger.log(`Traditional search returned ${traditionalResults.length} results`);
+
+      // 4. Eliminar duplicados
+      const uniqueResults = this.deduplicateResults(allResults);
+
+      // 5. Aplicar ranking semántico
       const rankedResults = this.semanticRanking.rankResults(
-        searchResults,
+        uniqueResults,
         query,
         totalDocuments,
       );
 
-      this.logger.log(`Search for "${query}" returned ${rankedResults.length} results`);
+      this.logger.log(
+        `Semantic search for "${query}" returned ${rankedResults.length} unique results`,
+      );
 
       return rankedResults;
     } catch (error) {
-      this.logger.error(`Search failed: ${error.message}`);
-      throw new Error(`Failed to execute search: ${error.message}`);
+      this.logger.error(`Semantic search failed: ${error.message}`);
+      // Fallback a búsqueda tradicional
+      return this.traditionalSearch(query, language);
     }
+  }
+
+  /**
+   * Búsqueda vectorial usando embeddings
+   */
+  private async vectorSearch(
+    query: string,
+    language?: string,
+    minScore: number = 0.5,
+  ): Promise<SearchResult[]> {
+    try {
+      // Generar embedding de la consulta
+      const embeddingResult = await this.embeddingsService.generateEmbedding(query);
+
+      if (!embeddingResult) {
+        this.logger.debug('Could not generate embedding for query');
+        return [];
+      }
+
+      // Buscar por similitud en Elasticsearch
+      const results = await this.elasticsearchService.searchBySimilarity(
+        embeddingResult.embedding,
+        language,
+        minScore,
+      );
+
+      return results.map(r => ({
+        subject: r.subject,
+        predicate: r.predicate,
+        object: r.object,
+        language: r.language,
+        score: r.score,
+      }));
+    } catch (error) {
+      this.logger.error(`Vector search failed: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Búsqueda con expansión de consultas
+   */
+  private async expandedSearch(
+    query: string,
+    language?: string,
+  ): Promise<SearchResult[]> {
+    try {
+      // Expandir la consulta
+      const expandedQuery = await this.queryExpansionService.expandQuery(query);
+
+      this.logger.debug(
+        `Query expanded: ${expandedQuery.expanded.length} additional terms`,
+      );
+
+      // Construir query SPARQL expandida
+      const sparqlQuery = this.queryExpansionService.buildExpandedSparqlQuery(
+        expandedQuery,
+        language,
+      );
+
+      // Ejecutar búsqueda
+      const results = await this.sparqlService.query(sparqlQuery);
+      return this.convertSparqlResults(results);
+    } catch (error) {
+      this.logger.error(`Expanded search failed: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Búsqueda tradicional SPARQL (fallback)
+   */
+  private async traditionalSearch(
+    query: string,
+    language?: string,
+  ): Promise<SearchResult[]> {
+    try {
+      const totalDocuments = await this.getTotalDocuments();
+      const results = await this.sparqlService.searchTriples(query, language);
+      const searchResults = this.convertSparqlResults(results);
+
+      return this.semanticRanking.rankResults(
+        searchResults,
+        query,
+        totalDocuments,
+      );
+    } catch (error) {
+      this.logger.error(`Traditional search failed: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Elimina resultados duplicados
+   */
+  private deduplicateResults(results: SearchResult[]): SearchResult[] {
+    const seen = new Set<string>();
+    const unique: SearchResult[] = [];
+
+    for (const result of results) {
+      const key = `${result.subject}|${result.predicate}|${result.object}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(result);
+      }
+    }
+
+    return unique;
   }
 
   /**
    * Búsqueda avanzada por patrón (sujeto, predicado, objeto)
    */
-  async searchByPattern(pattern: SearchPattern, language?: string): Promise<SearchResult[]> {
+  async searchByPattern(
+    pattern: SearchPattern,
+    language?: string,
+  ): Promise<SearchResult[]> {
     try {
       const { subject, predicate, object } = pattern;
 
@@ -92,7 +247,11 @@ export class SearchService {
   /**
    * Búsqueda difusa (fuzzy search)
    */
-  async fuzzySearch(term: string, threshold: number = 0.7, language?: string): Promise<SearchResult[]> {
+  async fuzzySearch(
+    term: string,
+    threshold: number = 0.7,
+    language?: string,
+  ): Promise<SearchResult[]> {
     try {
       const totalDocuments = await this.getTotalDocuments();
 
@@ -123,8 +282,11 @@ export class SearchService {
   /**
    * Búsqueda semántica avanzada (alias para compatibilidad)
    */
-  async advancedSemanticSearch(query: string, language?: string): Promise<SearchResult[]> {
-    return this.semanticSearch(query, language);
+  async advancedSemanticSearch(
+    query: string,
+    language?: string,
+  ): Promise<SearchResult[]> {
+    return this.semanticSearch(query, { language });
   }
 
   /**
@@ -208,5 +370,22 @@ export class SearchService {
   private async getTotalDocuments(): Promise<number> {
     const count = await this.prisma.document.count();
     return count || 1; // Evitar división por cero
+  }
+
+  /**
+   * Incrementa el contador de accesos de un documento
+   */
+  async trackDocumentAccess(documentId: string): Promise<void> {
+    try {
+      await this.prisma.document.update({
+        where: { id: documentId },
+        data: {
+          accessCount: { increment: 1 },
+          lastAccess: new Date(),
+        },
+      });
+    } catch (error) {
+      this.logger.debug(`Failed to track document access: ${error.message}`);
+    }
   }
 }
