@@ -20,7 +20,11 @@ export class SearchController {
     }
 
     const results = await this.searchService.semanticSearch(query, { language });
-    return { results, count: results.length };
+
+    // Enriquecer resultados con propiedades de clases
+    const enrichedResults = await this.searchService.enrichResultsWithProperties(results);
+
+    return { results: enrichedResults, count: enrichedResults.length };
   }
 
   /**

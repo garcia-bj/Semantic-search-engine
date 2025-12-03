@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import LanguageSelector from '@/components/LanguageSelector';
+import SearchResultCard from '@/components/SearchResultCard';
 import { Locale } from '@/lib/i18n';
 import { searchDBpedia, DBpediaResult } from '@/lib/dbpedia';
 
@@ -473,37 +474,7 @@ export default function SearchPage() {
                                             </div>
                                             <div className="space-y-4">
                                                 {results.map((result, index) => (
-                                                    <div
-                                                        key={result.id || `local-${index}`}
-                                                        className="group p-6 bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur-xl border border-slate-700/50 rounded-3xl hover:border-purple-500/50 transition-all duration-300 hover:scale-[1.01] shadow-xl hover:shadow-2xl hover:shadow-purple-500/20"
-                                                    >
-                                                        <div className="flex items-start gap-4">
-                                                            <div className="w-12 h-12 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
-                                                                <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                                </svg>
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <span className="px-3 py-1 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded-full">
-                                                                        {t.knowledgeBase}
-                                                                    </span>
-                                                                    <span className="text-xs text-slate-500">
-                                                                        {result.document?.filename || 'General Document'}
-                                                                    </span>
-                                                                </div>
-                                                                <h3 className="text-xl font-bold text-purple-300 mb-3 break-words">{result.subject}</h3>
-                                                                <div className="space-y-2 text-sm">
-                                                                    <p className="text-slate-400 break-all">
-                                                                        <span className="font-semibold text-slate-300">{t.predicate}:</span> {result.predicate}
-                                                                    </p>
-                                                                    <p className="text-slate-400 break-all">
-                                                                        <span className="font-semibold text-slate-300">{t.object}:</span> {result.object}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                    <SearchResultCard key={result.id || `local-${index}`} result={result} index={index} t={t} />
                                                 ))}
                                             </div>
                                         </section>

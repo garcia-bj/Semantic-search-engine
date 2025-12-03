@@ -6,7 +6,7 @@
 /venv/*
 /venv/Scripts/*
 /venv/Lib/site-packages/*
-/venv/Lib/site-packages/*
+**/venv/
 
 # Logs
 logs
