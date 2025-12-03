@@ -3,7 +3,11 @@
 /node_modules
 /build
 /venv
-/venv/
+/venv/*
+/venv/Scripts/*
+/venv/Lib/site-packages/*
+/venv/Lib/site-packages/*
+
 # Logs
 logs
 *.log
