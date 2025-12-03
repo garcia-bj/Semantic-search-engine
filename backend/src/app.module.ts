@@ -4,6 +4,8 @@ import { PrismaModule } from "./modules/database/prisma.module";
 import { OntologyModule } from "./modules/ontology/ontology.module";
 import { SearchModule } from "./modules/search/search.module";
 import { DbpediaModule } from "./modules/dbpedia/dbpedia.module";
+import { DBpediaCacheModule } from "./modules/dbpedia-cache/dbpedia-cache.module";
+import { AppController } from "./app.controller";
 import { I18nModule, AcceptLanguageResolver } from 'nestjs-i18n';
 import * as path from 'path';
 
@@ -24,6 +26,8 @@ import * as path from 'path';
     OntologyModule,
     SearchModule,
     DbpediaModule,
+    DBpediaCacheModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule { }

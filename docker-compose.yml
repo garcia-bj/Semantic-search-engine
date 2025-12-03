@@ -1,75 +1,132 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: semantic_postgres
+    container_name: semantic-search-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: semantic_user
-      POSTGRES_PASSWORD: semantic_password
-      POSTGRES_DB: semantic_search
+      POSTGRES_DB: ${POSTGRES_DB:-semantic_search}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "5433:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - semantic_network
+      - semantic-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # Apache Jena Fuseki (SPARQL Server)
   fuseki:
     image: stain/jena-fuseki:latest
-    container_name: semantic_fuseki
+    container_name: semantic-search-fuseki
     restart: unless-stopped
     environment:
-      ADMIN_PASSWORD: admin123
-      JVM_ARGS: -Xmx2g
+      ADMIN_PASSWORD: ${FUSEKI_PASSWORD:-admin123}
+      JVM_ARGS: "-Xmx2g"
     ports:
-      - "3030:3030"
+      - "${FUSEKI_PORT:-3030}:3030"
     volumes:
       - fuseki_data:/fuseki
     networks:
-      - semantic_network
+      - semantic-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:3030/$/ping || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # Elasticsearch (for vector search)
   elasticsearch:
-    image: elasticsearch:8.11.0
-    container_name: semantic_elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: semantic-search-elasticsearch
     restart: unless-stopped
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
-      - "9200:9200"
-      - "9300:9300"
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
-      - semantic_network
+      - semantic-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
+  # Backend API
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: semantic_backend
+      target: production
+    container_name: semantic-search-backend
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fuseki:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     environment:
       NODE_ENV: production
-      PORT: 3001
-      DATABASE_URL: postgresql://semantic_user:semantic_password@postgres:5432/semantic_search
+      PORT: ${BACKEND_PORT:-3001}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-semantic_search}
       FUSEKI_URL: http://fuseki:3030
-      FUSEKI_DATASET: semantic
+      FUSEKI_DATASET: ${FUSEKI_DATASET:-semantic}
       ELASTICSEARCH_NODE: http://elasticsearch:9200
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     ports:
-      - "3001:3001"
+      - "${BACKEND_PORT:-3001}:3001"
     volumes:
       - ./backend/uploads:/app/uploads
-    depends_on:
-      - postgres
-      - fuseki
-      - elasticsearch
     networks:
-      - semantic_network
-    command: sh -c "npx prisma migrate deploy && node dist/main"
+      - semantic-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:3001/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    container_name: semantic-search-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    networks:
+      - semantic-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:3000 || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  semantic-network:
+    driver: bridge
 
 volumes:
   postgres_data:
@@ -78,7 +135,3 @@ volumes:
     driver: local
   elasticsearch_data:
     driver: local
-
-networks:
-  semantic_network:
-    driver: bridge

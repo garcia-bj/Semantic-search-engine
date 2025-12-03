@@ -35,3 +35,20 @@ model Embedding {
   @@index([text])
   @@index([model])
 }
+
+model DBpediaCache {
+  id           String    @id @default(uuid())
+  query        String    @unique
+  results      Json
+  category     String    // 'tv_series', 'person', 'organization', 'other'
+  verified     Boolean   @default(false)
+  confidence   Float     @default(0.8)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastVerified DateTime?
+  
+  @@index([query])
+  @@index([category])
+  @@index([verified])
+  @@map("dbpedia_cache")
+}

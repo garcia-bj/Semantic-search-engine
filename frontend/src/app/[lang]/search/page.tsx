@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import LanguageSelector from '@/components/LanguageSelector';
 import SearchResultCard from '@/components/SearchResultCard';
+import DBpediaStatusToast, { useToast } from '@/components/DBpediaStatusToast';
+import SourceIndicator from '@/components/SourceIndicator';
 import { Locale } from '@/lib/i18n';
 import { searchDBpedia, DBpediaResult } from '@/lib/dbpedia';
 
@@ -90,9 +92,12 @@ export default function SearchPage() {
     const [files, setFiles] = useState<Document[]>([]);
     const [results, setResults] = useState<SearchResult[]>([]);
     const [dbpediaResults, setDbpediaResults] = useState<DBpediaResult[]>([]);
+    const [dbpediaSource, setDbpediaSource] = useState<'online' | 'cache' | 'none'>('none');
+    const [dbpediaVerified, setDbpediaVerified] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
     const [error, setError] = useState('');
+    const { toasts, addToast, removeToast, showLoading, showSuccess, showWarning, showError } = useToast();
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -163,26 +168,59 @@ export default function SearchPage() {
         setError('');
         setResults([]);
         setDbpediaResults([]);
+        setDbpediaSource('none');
 
         try {
-            // Ejecutar búsquedas en paralelo
-            const [localRes, dbpediaRes] = await Promise.all([
-                fetch(`${API_URL}/search?query=${encodeURIComponent(query)}`),
-                searchDBpedia(query, lang)
-            ]);
-
+            // Búsqueda local
+            const localRes = await fetch(`${API_URL}/search?query=${encodeURIComponent(query)}`);
             if (localRes.ok) {
                 const data = await localRes.json();
                 setResults(data.results || []);
-            } else {
-                console.error('Local search error');
             }
 
-            setDbpediaResults(dbpediaRes);
+            // Búsqueda DBpedia con caché y notificaciones
+            const toastId = showLoading('Buscando en DBpedia...');
+
+            try {
+                const dbpediaRes = await fetch(
+                    `${API_URL}/dbpedia-cache/search?q=${encodeURIComponent(query)}`,
+                    { signal: AbortSignal.timeout(10000) } // 10s timeout
+                );
+
+                removeToast(toastId);
+
+                if (dbpediaRes.ok) {
+                    const data = await dbpediaRes.json();
+
+                    if (data.success && data.results.length > 0) {
+                        setDbpediaResults(data.results);
+                        setDbpediaSource(data.source);
+                        setDbpediaVerified(data.verified || false);
+
+                        if (data.source === 'online') {
+                            showSuccess(`${data.results.length} resultados encontrados en DBpedia`);
+                        } else if (data.source === 'cache') {
+                            showWarning(`Usando caché offline (${data.results.length} resultados)`);
+                        }
+                    } else {
+                        showWarning('No se encontraron resultados en DBpedia');
+                    }
+                } else {
+                    showError('Error al buscar en DBpedia');
+                }
+            } catch (dbError: any) {
+                removeToast(toastId);
+                if (dbError.name === 'TimeoutError' || dbError.name === 'AbortError') {
+                    showWarning('DBpedia tardó mucho en responder (puede estar lento o sin internet)');
+                } else {
+                    showError('Error de conexión con DBpedia');
+                }
+            }
 
         } catch (error) {
             console.error('Search error:', error);
-            setError('Connection error with server');
+            setError('Error de conexión con el servidor');
+            showError('Error de conexión con el servidor');
         } finally {
             setIsSearching(false);
         }
@@ -192,6 +230,8 @@ export default function SearchPage() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/10 to-slate-950 text-white">
+            {/* Toast Notifications */}
+            <DBpediaStatusToast toasts={toasts} onRemove={removeToast} />
             {/* Animated background */}
             <div className="fixed inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" />

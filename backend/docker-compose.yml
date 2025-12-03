@@ -1,45 +1,111 @@
 version: '3.8'
 
 services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
-    container_name: semantic-search-es
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: semantic-backend-postgres
+    restart: unless-stopped
     environment:
-      - node.name=es01
-      - cluster.name=semantic-search-cluster
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - xpack.security.enabled=false
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
+      POSTGRES_DB: ${POSTGRES_DB:-semantic_search}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - es_data:/usr/share/elasticsearch/data
-    ports:
-      - "9200:9200"
+      - postgres_data:/var/lib/postgresql/data
     networks:
-      - semantic-net
+      - backend-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # Apache Jena Fuseki (SPARQL Server)
   fuseki:
-    image: stain/jena-fuseki
-    container_name: semantic-search-fuseki
-    ports:
-      - "3030:3030"
+    image: stain/jena-fuseki:latest
+    container_name: semantic-backend-fuseki
+    restart: unless-stopped
     environment:
-      - ADMIN_PASSWORD=admin123
+      ADMIN_PASSWORD: ${FUSEKI_PASSWORD:-admin123}
+      JVM_ARGS: "-Xmx2g"
+    ports:
+      - "${FUSEKI_PORT:-3030}:3030"
     volumes:
       - fuseki_data:/fuseki
-    command: /jena-fuseki/fuseki-server --file=/fuseki/config.ttl /semantic-search
     networks:
-      - semantic-net
+      - backend-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:3030/$/ping || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-volumes:
-  es_data:
-  fuseki_data:
+  # Elasticsearch (for vector search)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: semantic-backend-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: semantic-backend-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fuseki:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: ${BACKEND_PORT:-3001}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-semantic_search}
+      FUSEKI_URL: http://fuseki:3030
+      FUSEKI_DATASET: ${FUSEKI_DATASET:-semantic}
+      ELASTICSEARCH_NODE: http://elasticsearch:9200
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - backend-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:3001/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
-  semantic-net:
+  backend-network:
     driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  fuseki_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
