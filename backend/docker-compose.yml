@@ -63,25 +63,28 @@ services:
       timeout: 10s
       retries: 5
 
-  # LibreTranslate (Translation Service)
-  libretranslate:
-    image: libretranslate/libretranslate:latest
-    container_name: semantic-backend-translator
+  # Embeddings Service (Python)
+  embeddings:
+    build:
+      context: .
+      dockerfile: Dockerfile.embeddings
+    container_name: semantic-backend-embeddings
     restart: unless-stopped
     ports:
-      - "${LIBRETRANSLATE_PORT:-5001}:5000"
+      - "${EMBEDDINGS_PORT:-5000}:5000"
     environment:
-      LT_LOAD_ONLY: en,es
-      LT_UPDATE_MODELS: "true"
+      MODEL_NAME: paraphrase-multilingual-MiniLM-L12-v2
+      FLASK_ENV: production
     volumes:
-      - libretranslate_data:/home/libretranslate/.local
+      - embeddings_models:/app/models
     networks:
       - backend-network
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:5000/languages || exit 1" ]
+      test: [ "CMD-SHELL", "curl -f http://localhost:5000/health || exit 1" ]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
+      start_period: 60s
 
   # Backend API
   backend:
@@ -98,7 +101,7 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
-      libretranslate:
+      embeddings:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -107,7 +110,7 @@ services:
       FUSEKI_URL: http://fuseki:3030
       FUSEKI_DATASET: ${FUSEKI_DATASET:-semantic}
       ELASTICSEARCH_NODE: http://elasticsearch:9200
-      LIBRETRANSLATE_URL: http://libretranslate:5000
+      EMBEDDINGS_SERVICE_URL: http://embeddings:5000
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
     ports:
       - "${BACKEND_PORT:-3001}:3001"
@@ -132,5 +135,5 @@ volumes:
     driver: local
   elasticsearch_data:
     driver: local
-  libretranslate_data:
+  embeddings_models:
     driver: local

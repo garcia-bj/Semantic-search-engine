@@ -2,35 +2,136 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+const { Translate } = require('@google-cloud/translate').v2;
 
-// Diccionario manual de series populares (OFFLINE)
-const TV_SHOWS_DICTIONARY = {
+// Diccionario manual de traducciones (OFFLINE)
+const TRANSLATION_DICTIONARY = {
+    // ===== PALABRAS COMUNES =====
+
+    // Español -> Inglés (palabras comunes)
+    'un grupo de ladrones organiza un gran atraco en españa': 'a group of thieves organizes a great heist in spain',
+    'grupo de ladrones': 'group of thieves',
+    'atraco': 'heist',
+    'ladrones': 'thieves',
+    'ladrón': 'thief',
+    'finalizada': 'finished',
+    'acción': 'action',
+    'español': 'spanish',
+    'serie de televisión': 'tv series',
+    'temporadas': 'seasons',
+    'episodios': 'episodes',
+    'descripción': 'description',
+    'título': 'title',
+    'género': 'genre',
+    'drama': 'drama',
+    'comedia': 'comedy',
+    'suspenso': 'thriller',
+    'ciencia ficción': 'science fiction',
+    'fantasía': 'fantasy',
+    'terror': 'horror',
+    'aventura': 'adventure',
+    'crimen': 'crime',
+    'misterio': 'mystery',
+    'romance': 'romance',
+    'documental': 'documentary',
+
+    // Inglés -> Español (palabras comunes)
+    'a group of thieves organizes a great heist in spain': 'un grupo de ladrones organiza un gran atraco en españa',
+    'group of thieves': 'grupo de ladrones',
+    'heist': 'atraco',
+    'thieves': 'ladrones',
+    'thief': 'ladrón',
+    'finished': 'finalizada',
+    'action': 'acción',
+    'spanish': 'español',
+    'tv series': 'serie de televisión',
+    'seasons': 'temporadas',
+    'episodes': 'episodios',
+    'description': 'descripción',
+    'title': 'título',
+    'genre': 'género',
+    'comedy': 'comedia',
+    'thriller': 'suspenso',
+    'science fiction': 'ciencia ficción',
+    'fantasy': 'fantasía',
+    'horror': 'terror',
+    'adventure': 'aventura',
+    'crime': 'crimen',
+    'mystery': 'misterio',
+    'documentary': 'documental',
+
+    // Portugués -> Español (palabras comunes)
+    'um grupo de ladrões organiza um grande assalto na espanha': 'un grupo de ladrones organiza un gran atraco en españa',
+    'grupo de ladrões': 'grupo de ladrones',
+    'assalto': 'atraco',
+    'ladrões': 'ladrones',
+    'ladrão': 'ladrón',
+    'finalizado': 'finalizada',
+    'ação': 'acción',
+    'espanhol': 'español',
+    'série de televisão': 'serie de televisión',
+    'episódios': 'episodios',
+    'descrição': 'descripción',
+    'gênero': 'género',
+
+    // ===== SERIES DE TV =====
+
     // Inglés -> Español
     'the money heist': 'la casa de papel',
     'money heist': 'la casa de papel',
-    'breaking bad': 'breaking bad',
     'game of thrones': 'juego de tronos',
-    'stranger things': 'stranger things',
     'the walking dead': 'los muertos vivientes',
+    'the witcher': 'el brujo',
+    'the mandalorian': 'el mandaloriano',
+    'the office': 'la oficina',
+    'how i met your mother': 'cómo conocí a vuestra madre',
+    'the big bang theory': 'la teoría del big bang',
+    'the handmaid\'s tale': 'el cuento de la criada',
+    '13 reasons why': 'por trece razones',
+
+    // Español -> Inglés
+    'la casa de papel': 'the money heist',
+    'el marginal': 'the marginal',
+    'el reino': 'the kingdom',
+    'el ministerio del tiempo': 'the ministry of time',
+    'juego de tronos': 'game of thrones',
+    'los muertos vivientes': 'the walking dead',
+    'el brujo': 'the witcher',
+    'el mandaloriano': 'the mandalorian',
+    'la oficina': 'the office',
+    'cómo conocí a vuestra madre': 'how i met your mother',
+    'la teoría del big bang': 'the big bang theory',
+    'el cuento de la criada': 'the handmaid\'s tale',
+    'por trece razones': '13 reasons why',
+    'vikingos': 'vikings',
+    'élite': 'elite',
+
+    // Portugués -> Español
+    'o roubo de dinheiro': 'la casa de papel',
+    'a casa de papel': 'la casa de papel',
+    'a guerra dos tronos': 'juego de tronos',
+    'os mortos-vivos': 'los muertos vivientes',
+    'o bruxo': 'el brujo',
+    'o mandaloriano': 'el mandaloriano',
+    'o escritório': 'la oficina',
+    'lúcifer': 'lucifer',
+
+    // Series que se mantienen igual
+    'breaking bad': 'breaking bad',
+    'stranger things': 'stranger things',
     'the crown': 'the crown',
     'narcos': 'narcos',
     'dark': 'dark',
-    'the witcher': 'el brujo',
     'peaky blinders': 'peaky blinders',
     'black mirror': 'black mirror',
-    'the mandalorian': 'el mandaloriano',
     'the boys': 'the boys',
     'westworld': 'westworld',
-    'the office': 'la oficina',
     'friends': 'friends',
-    'how i met your mother': 'cómo conocí a vuestra madre',
-    'the big bang theory': 'la teoría del big bang',
     'sherlock': 'sherlock',
     'doctor who': 'doctor who',
     'house of cards': 'house of cards',
     'orange is the new black': 'orange is the new black',
-    'vikings': 'vikingos',
-    'the handmaid\'s tale': 'el cuento de la criada',
+    'vikings': 'vikings',
     'chernobyl': 'chernobyl',
     'the umbrella academy': 'the umbrella academy',
     'lucifer': 'lucifer',
@@ -38,13 +139,56 @@ const TV_SHOWS_DICTIONARY = {
     'arrow': 'arrow',
     'supergirl': 'supergirl',
     'riverdale': 'riverdale',
-    '13 reasons why': 'por trece razones',
-    'elite': 'élite',
-    'la casa de papel': 'the money heist',
-    'el marginal': 'the marginal',
-    'el reino': 'the kingdom',
-    'el ministerio del tiempo': 'the ministry of time',
-    // Agregar más según necesites
+    'elite': 'elite',
+};
+
+// Diccionario específico para traducciones al Portugués
+const PORTUGUESE_DICTIONARY: { [key: string]: string } = {
+    // Español -> Portugués (palabras comunes)
+    'finalizada': 'finalizado',
+    'acción': 'ação',
+    'español': 'espanhol',
+    'españa': 'espanha',
+    'descripción': 'descrição',
+    'título': 'título',
+    'género': 'gênero',
+    'drama': 'drama',
+    'comedia': 'comédia',
+    'suspenso': 'suspense',
+    'ciencia ficción': 'ficção científica',
+    'fantasía': 'fantasia',
+    'terror': 'terror',
+    'aventura': 'aventura',
+    'crimen': 'crime',
+    'misterio': 'mistério',
+    'documental': 'documentário',
+    'romance': 'romance',
+    'temporadas': 'temporadas',
+    'episodios': 'episódios',
+    'serie de televisión': 'série de televisão',
+    'estados unidos': 'estados unidos',
+    'en emision': 'em exibição',
+    'inglés': 'inglês',
+
+    // Español -> Portugués (títulos de series)
+    'juego de tronos': 'a guerra dos tronos',
+    'la casa de papel': 'a casa de papel',
+    'los muertos vivientes': 'os mortos-vivos',
+    'el brujo': 'o bruxo',
+    'el mandaloriano': 'o mandaloriano',
+    'la oficina': 'o escritório',
+    'la teoría del big bang': 'a teoria do big bang',
+    'cómo conocí a vuestra madre': 'como conheci vossa mãe',
+    'el cuento de la criada': 'o conto da ama',
+    'por trece razones': 'os 13 porquês',
+    'game of thrones': 'a guerra dos tronos',
+
+    // Descripciones comunes
+    'un grupo de ladrones organiza un gran atraco en españa': 'um grupo de ladrões organiza um grande assalto na espanha',
+    'grupo de ladrones': 'grupo de ladrões',
+    'atraco': 'assalto',
+    'ladrones': 'ladrões',
+    'ladrón': 'ladrão',
 };
 
 export interface TranslationResult {
@@ -58,74 +202,108 @@ export interface TranslationResult {
 @Injectable()
 export class TranslationService {
     private readonly logger = new Logger(TranslationService.name);
-    private readonly LIBRETRANSLATE_URL = process.env.LIBRETRANSLATE_URL || 'http://localhost:5001';
+    private readonly translateClient: any;
 
     constructor(
         private prisma: PrismaService,
         private httpService: HttpService,
-    ) { }
+    ) {
+        // Inicializar Google Translate si hay API key
+        if (process.env.GOOGLE_TRANSLATE_API_KEY) {
+            this.translateClient = new Translate({
+                key: process.env.GOOGLE_TRANSLATE_API_KEY
+            });
+            this.logger.log('Google Translate API initialized');
+        } else {
+            this.translateClient = null;
+            this.logger.warn('Google Translate API key not found. Translation will use dictionary and cache only.');
+        }
+    }
 
     /**
      * Traducir texto con sistema híbrido
      * 1. Buscar en diccionario manual (offline)
      * 2. Buscar en caché
-     * 3. Usar LibreTranslate (online)
+     * 3. Usar Google Translate (online)
      */
-    async translate(text: string, targetLang: 'en' | 'es' = 'es'): Promise<TranslationResult> {
+    async translate(text: string, targetLang: 'en' | 'es' | 'pt' = 'es'): Promise<TranslationResult> {
         const normalizedText = text.toLowerCase().trim();
 
-        // 1. Buscar en diccionario manual (OFFLINE)
-        const dictionaryResult = this.searchDictionary(normalizedText, targetLang);
-        if (dictionaryResult) {
-            this.logger.log(`Dictionary hit: "${text}" -> "${dictionaryResult}"`);
-            return {
-                original: text,
-                translated: dictionaryResult,
-                sourceLang: targetLang === 'es' ? 'en' : 'es',
-                targetLang,
-                source: 'dictionary',
-            };
+        // Para traducciones a portugués, buscar primero en diccionario portugués
+        if (targetLang === 'pt') {
+            // Buscar en diccionario portugués
+            const ptDictResult = PORTUGUESE_DICTIONARY[normalizedText];
+            if (ptDictResult) {
+                this.logger.log(`Portuguese dictionary hit: "${text}" -> "${ptDictResult}"`);
+                return {
+                    original: text,
+                    translated: ptDictResult,
+                    sourceLang: 'es',
+                    targetLang,
+                    source: 'dictionary',
+                };
+            }
+            // Si no está en diccionario portugués, ir a Google Translate
+        } else {
+            // 1. Buscar en diccionario manual (OFFLINE) - solo para EN/ES
+            const dictionaryResult = this.searchDictionary(normalizedText, targetLang);
+            if (dictionaryResult) {
+                this.logger.log(`Dictionary hit: "${text}" -> "${dictionaryResult}"`);
+                return {
+                    original: text,
+                    translated: dictionaryResult,
+                    sourceLang: targetLang === 'es' ? 'en' : 'es',
+                    targetLang,
+                    source: 'dictionary',
+                };
+            }
+
+            // 2. Buscar en caché (OFFLINE) - solo para EN/ES
+            const cachedResult = await this.searchCache(text, targetLang);
+            if (cachedResult) {
+                this.logger.log(`Cache hit: "${text}" -> "${cachedResult.translatedText}"`);
+                return {
+                    original: text,
+                    translated: cachedResult.translatedText,
+                    sourceLang: cachedResult.sourceLang,
+                    targetLang,
+                    source: 'cache',
+                };
+            }
         }
 
-        // 2. Buscar en caché (OFFLINE)
-        const cachedResult = await this.searchCache(text, targetLang);
-        if (cachedResult) {
-            this.logger.log(`Cache hit: "${text}" -> "${cachedResult.translatedText}"`);
-            return {
-                original: text,
-                translated: cachedResult.translatedText,
-                sourceLang: cachedResult.sourceLang,
-                targetLang,
-                source: 'cache',
-            };
+        // 3. Usar Google Translate (ONLINE)
+        if (this.translateClient) {
+            try {
+                const translated = await this.translateWithGoogle(text, targetLang);
+
+                // Guardar en caché solo para inglés/español
+                if (targetLang !== 'pt') {
+                    await this.saveToCache(text, translated, 'auto', targetLang, 'google');
+                }
+
+                this.logger.log(`Google Translate: "${text}" -> "${translated}"`);
+                return {
+                    original: text,
+                    translated,
+                    sourceLang: 'auto',
+                    targetLang,
+                    source: 'dictionary',
+                };
+            } catch (error) {
+                this.logger.warn(`Google Translate failed: ${error.message}`);
+            }
         }
 
-        // 3. Usar LibreTranslate (ONLINE)
-        try {
-            const translated = await this.translateWithLibreTranslate(text, targetLang);
-
-            // Guardar en caché para próxima vez
-            await this.saveToCache(text, translated, 'auto', targetLang, 'libretranslate');
-
-            this.logger.log(`LibreTranslate: "${text}" -> "${translated}"`);
-            return {
-                original: text,
-                translated,
-                sourceLang: 'auto',
-                targetLang,
-                source: 'libretranslate',
-            };
-        } catch (error) {
-            this.logger.warn(`Translation failed: ${error.message}`);
-            // Si falla, devolver texto original
-            return {
-                original: text,
-                translated: text,
-                sourceLang: 'auto',
-                targetLang,
-                source: 'dictionary',
-            };
-        }
+        // Si todo falla, devolver texto original
+        this.logger.warn(`No translation available for: "${text}"`);
+        return {
+            original: text,
+            translated: text,
+            sourceLang: 'auto',
+            targetLang,
+            source: 'dictionary',
+        };
     }
 
     /**
@@ -135,23 +313,42 @@ export class TranslationService {
         const results: string[] = [text]; // Incluir texto original
 
         try {
-            // Traducir a español
-            const esResult = await this.translate(text, 'es');
-            if (esResult.translated !== text) {
-                results.push(esResult.translated);
+            // Traducir a español (con manejo de errores individual)
+            try {
+                const esResult = await this.translate(text, 'es');
+                if (esResult.translated !== text && esResult.translated) {
+                    results.push(esResult.translated);
+                }
+            } catch (error) {
+                this.logger.warn(`Spanish translation failed: ${error.message}`);
             }
 
-            // Traducir a inglés
-            const enResult = await this.translate(text, 'en');
-            if (enResult.translated !== text) {
-                results.push(enResult.translated);
+            // Traducir a inglés (con manejo de errores individual)
+            try {
+                const enResult = await this.translate(text, 'en');
+                if (enResult.translated !== text && enResult.translated) {
+                    results.push(enResult.translated);
+                }
+            } catch (error) {
+                this.logger.warn(`English translation failed: ${error.message}`);
+            }
+
+            // Traducir a portugués (con manejo de errores individual)
+            try {
+                const ptResult = await this.translate(text, 'pt');
+                if (ptResult.translated !== text && ptResult.translated) {
+                    results.push(ptResult.translated);
+                }
+            } catch (error) {
+                this.logger.warn(`Portuguese translation failed: ${error.message}`);
             }
 
             // Eliminar duplicados
             return [...new Set(results)];
         } catch (error) {
             this.logger.error(`Multi-language translation failed: ${error.message}`);
-            return results;
+            // Siempre devolver al menos el texto original
+            return [text];
         }
     }
 
@@ -161,16 +358,31 @@ export class TranslationService {
     private searchDictionary(text: string, targetLang: string): string | null {
         const normalized = text.toLowerCase().trim();
 
-        if (targetLang === 'es') {
-            // Buscar traducción al español
-            return TV_SHOWS_DICTIONARY[normalized] || null;
-        } else {
-            // Buscar traducción al inglés (invertir diccionario)
-            const entry = Object.entries(TV_SHOWS_DICTIONARY).find(
-                ([_, value]) => value === normalized
-            );
-            return entry ? entry[0] : null;
+        // Para traducciones a portugués, usar Google Translate en lugar del diccionario
+        // ya que el diccionario actual está optimizado para español↔inglés
+        if (targetLang === 'pt') {
+            return null; // Dejar que Google Translate maneje las traducciones al portugués
         }
+
+        // Buscar directamente en el diccionario (coincidencia exacta)
+        const directMatch = TRANSLATION_DICTIONARY[normalized];
+        if (directMatch) {
+            return directMatch;
+        }
+
+        // Solo buscar coincidencias parciales para textos cortos (palabras sueltas)
+        // No usar coincidencias parciales para textos largos (descripciones)
+        if (normalized.length <= 50) {
+            for (const [key, value] of Object.entries(TRANSLATION_DICTIONARY)) {
+                // Solo coincidir si la clave es una palabra completa dentro del texto
+                const wordBoundaryRegex = new RegExp(`\\b${key}\\b`, 'i');
+                if (wordBoundaryRegex.test(normalized) && key.length > 3) {
+                    return value;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -193,26 +405,18 @@ export class TranslationService {
     }
 
     /**
-     * Traducir usando LibreTranslate
+     * Traducir usando Google Translate API
      */
-    private async translateWithLibreTranslate(text: string, targetLang: string): Promise<string> {
-        try {
-            const response = await firstValueFrom(
-                this.httpService.post(`${this.LIBRETRANSLATE_URL}/translate`, {
-                    q: text,
-                    source: 'auto',
-                    target: targetLang,
-                    format: 'text',
-                }, {
-                    timeout: 5000,
-                })
-            );
+    private async translateWithGoogle(text: string, targetLang: string): Promise<string> {
+        if (!this.translateClient) {
+            throw new Error('Google Translate client not initialized');
+        }
 
-            return response.data.translatedText || text;
+        try {
+            const [translation] = await this.translateClient.translate(text, targetLang);
+            return translation;
         } catch (error) {
-            if (error.code === 'ECONNREFUSED') {
-                throw new Error('LibreTranslate service not available');
-            }
+            this.logger.error(`Google Translate API error: ${error.message}`);
             throw error;
         }
     }
@@ -254,24 +458,16 @@ export class TranslationService {
     }
 
     /**
-     * Detectar idioma del texto
+     * Detectar idioma del texto (simple heurística)
      */
     async detectLanguage(text: string): Promise<string> {
-        try {
-            const response = await firstValueFrom(
-                this.httpService.post(`${this.LIBRETRANSLATE_URL}/detect`, {
-                    q: text,
-                }, {
-                    timeout: 3000,
-                })
-            );
+        // Detectar basándose en caracteres especiales
+        const hasSpanishChars = /[áéíóúñü]/i.test(text);
+        const hasPortugueseChars = /[ãõâêôç]/i.test(text);
 
-            return response.data[0]?.language || 'auto';
-        } catch (error) {
-            // Si falla, intentar detectar manualmente
-            const hasSpanishChars = /[áéíóúñü]/i.test(text);
-            return hasSpanishChars ? 'es' : 'en';
-        }
+        if (hasPortugueseChars) return 'pt';
+        if (hasSpanishChars) return 'es';
+        return 'en';
     }
 
     /**
@@ -286,7 +482,7 @@ export class TranslationService {
 
         return {
             total,
-            dictionary: TV_SHOWS_DICTIONARY ? Object.keys(TV_SHOWS_DICTIONARY).length : 0,
+            dictionary: TRANSLATION_DICTIONARY ? Object.keys(TRANSLATION_DICTIONARY).length : 0,
             bySource: bySource.map(s => ({
                 source: s.source,
                 count: s._count,

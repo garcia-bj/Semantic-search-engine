@@ -11,7 +11,7 @@ export class TranslationController {
     @Post('translate')
     async translate(
         @Body('text') text: string,
-        @Body('targetLang') targetLang: 'en' | 'es' = 'es',
+        @Body('targetLang') targetLang: 'en' | 'es' | 'pt' = 'es',
     ) {
         const result = await this.translationService.translate(text, targetLang);
         return {

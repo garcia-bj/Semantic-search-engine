@@ -1,7 +1,6 @@
-owlready2==0.46
-sentence-transformers==2.2.2
-flask==3.0.0
-flask-cors==4.0.0
-numpy==1.24.3
-torch==2.1.0
-transformers==4.35.0
+owlready2==0.48
+sentence-transformers==3.0.1
+flask==3.0.3
+flask-cors==5.0.0
+numpy==1.26.4
+setuptools>=65.5.0

@@ -49,12 +49,21 @@ export class SearchService {
       language,
       useEmbeddings = true,
       useQueryExpansion = true,
-      useTranslation = true,
+      useTranslation = true, // Habilitado para búsqueda multiidioma
       minScore = 0.5,
     } = options;
 
     try {
       const totalDocuments = await this.getTotalDocuments();
+
+      // Obtener IDs de documentos subidos para filtrar búsqueda
+      const uploadedDocuments = await this.prisma.document.findMany({
+        select: { id: true },
+      });
+      const documentIds = uploadedDocuments.map(doc => doc.id);
+
+      this.logger.log(`Searching in ${documentIds.length} uploaded documents`);
+
       let allResults: SearchResult[] = [];
       let searchQueries: string[] = [query]; // Incluir query original
 
@@ -80,14 +89,14 @@ export class SearchService {
 
         // 2. Búsqueda con expansión de consultas
         if (useQueryExpansion) {
-          const expandedResults = await this.expandedSearch(searchQuery, language);
+          const expandedResults = await this.expandedSearch(searchQuery, language, documentIds);
           allResults.push(...expandedResults);
           this.logger.log(`Expanded search for "${searchQuery}" returned ${expandedResults.length} results`);
         }
 
-        // 3. Búsqueda SPARQL tradicional
-        const sparqlResults = await this.sparqlService.searchTriples(searchQuery, language);
-        const traditionalResults = await this.convertSparqlResults(sparqlResults);
+        // 3. Búsqueda SPARQL tradicional con filtro de documentId
+        const sparqlResults = await this.sparqlService.searchTriples(searchQuery, language, documentIds);
+        const traditionalResults = await this.convertSparqlResults(sparqlResults, language);
         allResults.push(...traditionalResults);
         this.logger.log(`Traditional search for "${searchQuery}" returned ${traditionalResults.length} results`);
       }
@@ -155,17 +164,18 @@ export class SearchService {
   private async expandedSearch(
     query: string,
     language?: string,
+    documentIds?: string[],
   ): Promise<SearchResult[]> {
     try {
       // Expandir la consulta
       const expandedResult = await this.queryExpansionService.expandQuery(query);
 
       // Construir query SPARQL con términos expandidos usando el método del servicio
-      const sparqlQuery = this.queryExpansionService.buildExpandedSparqlQuery(expandedResult, language);
+      const sparqlQuery = this.queryExpansionService.buildExpandedSparqlQuery(expandedResult, language, documentIds);
 
       // Ejecutar búsqueda
       const results = await this.sparqlService.query(sparqlQuery);
-      return await this.convertSparqlResults(results);
+      return await this.convertSparqlResults(results, language);
     } catch (error) {
       this.logger.error(`Expanded search failed: ${error.message}`);
       return [];
@@ -182,7 +192,7 @@ export class SearchService {
     try {
       const totalDocuments = await this.getTotalDocuments();
       const results = await this.sparqlService.searchTriples(query, language);
-      const searchResults = await this.convertSparqlResults(results);
+      const searchResults = await this.convertSparqlResults(results, language);
 
       return this.semanticRanking.rankResults(
         searchResults,
@@ -226,7 +236,7 @@ export class SearchService {
       const sparqlQuery = this.buildPatternQuery(subject, predicate, object, language);
       const results = await this.sparqlService.query(sparqlQuery);
 
-      return await this.convertSparqlResults(results);
+      return await this.convertSparqlResults(results, language);
     } catch (error) {
       this.logger.error(`Pattern search failed: ${error.message}`);
       throw new Error(`Failed to execute pattern search: ${error.message}`);
@@ -270,7 +280,7 @@ export class SearchService {
       const results = await this.sparqlService.query(sparqlQuery);
 
       // Convertir y filtrar resultados
-      const searchResults = await this.convertSparqlResults(results);
+      const searchResults = await this.convertSparqlResults(results, language);
       const filteredResults = searchResults.filter(
         (result) => this.calculateSimilarity(term, result) >= threshold,
       );
@@ -339,7 +349,7 @@ export class SearchService {
   /**
    * Convierte resultados de SPARQL a SearchResult[] y enriquece con información del documento
    */
-  private async convertSparqlResults(sparqlResults: any): Promise<SearchResult[]> {
+  private async convertSparqlResults(sparqlResults: any, targetLanguage?: string): Promise<SearchResult[]> {
     if (!sparqlResults?.results?.bindings) return [];
 
     const results = sparqlResults.results.bindings.map((binding: any) => ({
@@ -350,9 +360,12 @@ export class SearchService {
       documentId: binding.documentId?.value || undefined,
     }));
 
-    // Enriquecer con información del documento si está disponible
+    // Enriquecer con información del documento y traducir si está disponible
     const enrichedResults = await Promise.all(
       results.map(async (result) => {
+        let enrichedResult = { ...result };
+
+        // 1. Agregar información del documento
         if (result.documentId) {
           try {
             const document = await this.prisma.document.findUnique({
@@ -360,13 +373,36 @@ export class SearchService {
               select: { id: true, filename: true },
             });
             if (document) {
-              return { ...result, document };
+              enrichedResult = { ...enrichedResult, document };
             }
           } catch (error) {
             this.logger.debug(`Failed to fetch document: ${error.message}`);
           }
         }
-        return result;
+
+        // 2. Traducir el objeto al idioma objetivo si es necesario
+        if (targetLanguage && result.object) {
+          try {
+            const translationResult = await this.translationService.translate(
+              result.object,
+              targetLanguage as 'en' | 'es' | 'pt'
+            );
+
+            // Solo usar la traducción si es diferente del original
+            if (translationResult.translated !== result.object) {
+              enrichedResult = {
+                ...enrichedResult,
+                object: translationResult.translated,
+                originalObject: result.object, // Guardar el original
+                translatedFrom: translationResult.sourceLang,
+              };
+            }
+          } catch (error) {
+            this.logger.debug(`Translation failed for object: ${error.message}`);
+          }
+        }
+
+        return enrichedResult;
       }),
     );
 
@@ -375,48 +411,189 @@ export class SearchService {
 
   /**
    * Enriquece los resultados buscando individuos y sus relaciones completas
+   * y traduce las propiedades al idioma objetivo
    */
-  async enrichResultsWithProperties(results: SearchResult[]): Promise<any[]> {
+  async enrichResultsWithProperties(results: SearchResult[], targetLanguage?: string): Promise<any[]> {
     const enrichedResults = await Promise.all(
       results.map(async (result) => {
+        let enrichedResult: any;
+
         // CASO 1: Si es una clase, buscar individuos de esa clase
         if (
           result.predicate.includes('rdf-syntax-ns#type') &&
           result.object.includes('owl#Class')
         ) {
-          return await this.enrichWithIndividuals(result);
+          enrichedResult = await this.enrichWithIndividuals(result);
         }
-
         // CASO 2: Si es un individuo (instance), mostrar todas sus propiedades
-        const individualInfo = await this.getIndividualInfo(result.subject);
-        if (individualInfo) {
-          return {
-            ...result,
-            ...individualInfo,
-          };
+        else {
+          const individualInfo = await this.getIndividualInfo(result.subject);
+          if (individualInfo) {
+            enrichedResult = {
+              ...result,
+              ...individualInfo,
+            };
+          } else {
+            // CASO 3: Buscar si hay individuos relacionados con este resultado
+            const relatedIndividuals = await this.findRelatedIndividuals(result.subject);
+            if (relatedIndividuals.length > 0) {
+              enrichedResult = {
+                ...result,
+                type: 'related',
+                relatedIndividuals,
+                isClass: false,
+                isProperty: false,
+              };
+            } else {
+              enrichedResult = {
+                ...result,
+                isClass: false,
+                isProperty: false,
+              };
+            }
+          }
         }
 
-        // CASO 3: Buscar si hay individuos relacionados con este resultado
-        const relatedIndividuals = await this.findRelatedIndividuals(result.subject);
-        if (relatedIndividuals.length > 0) {
-          return {
-            ...result,
-            type: 'related',
-            relatedIndividuals,
-            isClass: false,
-            isProperty: false,
-          };
+        // Traducir propiedades al idioma objetivo si es necesario
+        if (targetLanguage && enrichedResult?.properties) {
+          enrichedResult.properties = await this.translateProperties(enrichedResult.properties, targetLanguage);
         }
 
-        return {
-          ...result,
-          isClass: false,
-          isProperty: false,
-        };
+        return enrichedResult;
       }),
     );
 
     return enrichedResults;
+  }
+
+  /**
+   * Traduce las propiedades al idioma objetivo
+   */
+  private async translateProperties(properties: any[], targetLanguage: string): Promise<any[]> {
+    if (!targetLanguage || targetLanguage === 'es') {
+      // Si el idioma objetivo es español, no traducir (los datos ya están en español)
+      return properties;
+    }
+
+    const translatedProperties = await Promise.all(
+      properties.map(async (prop) => {
+        try {
+          // Traducir el nombre de la propiedad
+          const propNameTranslation = await this.translationService.translate(
+            prop.property,
+            targetLanguage as 'en' | 'es' | 'pt'
+          );
+
+          // Traducir el valor si es un texto (no fechas, números o IDs)
+          let translatedValue = prop.value;
+          let translatedValueLabel = prop.valueLabel;
+          let originalValue = prop.value;
+
+          if (prop.isLiteral && this.shouldTranslateValue(prop.value)) {
+            // Detectar si el valor ya está en el idioma objetivo
+            const detectedLang = this.detectValueLanguage(prop.value);
+
+            // Solo traducir si el valor NO parece estar en el idioma objetivo
+            if (detectedLang !== targetLanguage) {
+              const valueTranslation = await this.translationService.translate(
+                prop.value,
+                targetLanguage as 'en' | 'es' | 'pt'
+              );
+              if (valueTranslation.translated !== prop.value) {
+                translatedValue = valueTranslation.translated;
+                translatedValueLabel = valueTranslation.translated;
+                originalValue = prop.value;
+              }
+            }
+          }
+
+          return {
+            ...prop,
+            property: propNameTranslation.translated || prop.property,
+            originalProperty: prop.property,
+            value: translatedValue,
+            valueLabel: translatedValueLabel,
+            originalValue: translatedValue !== originalValue ? originalValue : undefined,
+            translated: translatedValue !== originalValue,
+          };
+        } catch (error) {
+          this.logger.debug(`Translation failed for property ${prop.property}: ${error.message}`);
+          return prop;
+        }
+      }),
+    );
+
+    return translatedProperties;
+  }
+
+  /**
+   * Detecta el idioma aproximado de un texto basándose en patrones
+   */
+  private detectValueLanguage(value: string): string {
+    const lowerValue = value.toLowerCase();
+
+    // Palabras/patrones típicos del español
+    const spanishPatterns = [
+      /[áéíóúñü]/i,
+      /\b(de|del|la|el|en|con|por|para|los|las|un|una|que|es)\b/i,
+      /\b(finalizada|acción|español|descripción|temporadas)\b/i,
+    ];
+
+    // Palabras/patrones típicos del portugués
+    const portuguesePatterns = [
+      /[ãõâêôç]/i,
+      /\b(de|da|do|na|no|em|com|por|para|os|as|um|uma|que|é)\b/i,
+      /\b(finalizado|ação|espanhol|descrição|temporadas)\b/i,
+    ];
+
+    // Palabras/patrones típicos del inglés
+    const englishPatterns = [
+      /\b(the|of|and|a|an|in|on|at|for|with|to|is|are|was|were)\b/i,
+      /\b(game|thrones|walking|dead|office|fantasy|action|english|finished)\b/i,
+    ];
+
+    // Contar coincidencias
+    let esScore = 0, ptScore = 0, enScore = 0;
+
+    for (const pattern of spanishPatterns) {
+      if (pattern.test(value)) esScore++;
+    }
+    for (const pattern of portuguesePatterns) {
+      if (pattern.test(value)) ptScore++;
+    }
+    for (const pattern of englishPatterns) {
+      if (pattern.test(value)) enScore++;
+    }
+
+    // Determinar idioma dominante
+    if (enScore > esScore && enScore > ptScore) return 'en';
+    if (ptScore > esScore && ptScore > enScore) return 'pt';
+    if (esScore > 0) return 'es';
+
+    // Default: asumir español si no se puede determinar
+    return 'es';
+  }
+
+  /**
+   * Determina si un valor debe ser traducido (excluye fechas, números, IDs)
+   */
+  private shouldTranslateValue(value: string): boolean {
+    // No traducir si es un número
+    if (!isNaN(Number(value))) return false;
+
+    // No traducir si parece una fecha ISO
+    if (/^\d{4}-\d{2}-\d{2}/.test(value)) return false;
+
+    // No traducir si es un UUID
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return false;
+
+    // No traducir si es una URL
+    if (/^https?:\/\//.test(value)) return false;
+
+    // No traducir si es muy corto (probablemente código o abreviatura)
+    if (value.length < 3) return false;
+
+    return true;
   }
 
   /**

@@ -21,8 +21,8 @@ export class SearchController {
 
     const results = await this.searchService.semanticSearch(query, { language });
 
-    // Enriquecer resultados con propiedades de clases
-    const enrichedResults = await this.searchService.enrichResultsWithProperties(results);
+    // Enriquecer resultados con propiedades de clases y traducir al idioma de búsqueda
+    const enrichedResults = await this.searchService.enrichResultsWithProperties(results, language);
 
     return { results: enrichedResults, count: enrichedResults.length };
   }

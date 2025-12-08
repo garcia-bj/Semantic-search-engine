@@ -1,6 +1,6 @@
 export const fusekiConfig = {
     baseUrl: process.env.FUSEKI_URL || 'http://localhost:3030',
-    dataset: process.env.FUSEKI_DATASET || 'semantic-search',
+    dataset: process.env.FUSEKI_DATASET || 'semantic', // Cambiado para coincidir con docker-compose
     username: process.env.FUSEKI_USERNAME || 'admin',
     password: process.env.FUSEKI_PASSWORD || 'admin123',
 

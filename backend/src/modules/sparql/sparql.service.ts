@@ -38,9 +38,15 @@ export class SparqlService {
                 },
             );
 
+            this.logger.log(`SPARQL query returned ${response.data?.results?.bindings?.length || 0} results`);
+
             return response.data;
         } catch (error) {
             this.logger.error(`SPARQL Query failed: ${error.message}`);
+            if (error.response) {
+                this.logger.error(`Fuseki response status: ${error.response.status}`);
+                this.logger.error(`Fuseki response data: ${JSON.stringify(error.response.data)}`);
+            }
             throw new Error(`Failed to execute SPARQL query: ${error.message}`);
         }
     }
@@ -110,14 +116,29 @@ export class SparqlService {
 
     /**
      * Busca tripletas que coincidan con el patrón
+     * @param searchTerm Término de búsqueda
+     * @param language Filtro de idioma opcional
+     * @param documentIds IDs de documentos para filtrar (solo buscar en estos documentos)
      */
-    async searchTriples(searchTerm: string, language?: string): Promise<any> {
-        const languageFilter = language ? `FILTER(lang(?object) = "${language}")` : '';
+    async searchTriples(searchTerm: string, language?: string, documentIds?: string[]): Promise<any> {
+        // No aplicar filtro de idioma ya que los archivos OWL no usan etiquetas de idioma
+        // Esto permite buscar en cualquier idioma
+        const languageFilter = '';
+
+        // Construir filtro de documentId si se proporcionan IDs
+        let documentIdFilter = '';
+        if (documentIds && documentIds.length > 0) {
+            const docIdValues = documentIds.map(id => `"${id}"`).join(', ');
+            // Usar OPTIONAL para que la query funcione incluso si algunos triples no tienen documentId
+            documentIdFilter = `
+        OPTIONAL { ?subject <http://example.org/hasDocumentId> ?docId }
+        FILTER(!BOUND(?docId) || ?docId IN (${docIdValues}))`;
+        }
 
         const sparqlQuery = `
       ${this.getPrefixes()}
       
-      SELECT ?subject ?predicate ?object
+      SELECT ?subject ?predicate ?object ?docId
       WHERE {
         ?subject ?predicate ?object .
         FILTER(
@@ -126,9 +147,13 @@ export class SparqlService {
           regex(str(?object), "${this.escapeString(searchTerm)}", "i")
         )
         ${languageFilter}
+        ${documentIdFilter}
       }
       LIMIT 50
     `;
+
+        this.logger.log(`Executing SPARQL query for term "${searchTerm}":`);
+        this.logger.log(sparqlQuery);
 
         return this.query(sparqlQuery);
     }

@@ -32,18 +32,43 @@ export class OntologyService {
       if (fileContent.includes("<Ontology") || fileContent.includes("<owl:Ontology")) {
         if (!fileContent.includes("<rdf:RDF")) {
           this.logger.log("OWL/XML format detected. Converting to RDF/XML using Python script...");
+
+          // Declarar variables en el scope correcto para que estén disponibles en el catch
+          let pythonPath = process.env.PYTHON_PATH || 'python';
+          let scriptPath = '';
+
           try {
             const { exec } = require('child_process');
             const util = require('util');
             const execPromise = util.promisify(exec);
 
             // Ruta al script de Python (usando process.cwd() para mayor robustez)
-            const scriptPath = require('path').join(process.cwd(), 'scripts', 'convert_owl.py');
+            scriptPath = require('path').join(process.cwd(), 'scripts', 'convert_owl.py');
 
             this.logger.log(`Executing Python script at: ${scriptPath}`);
 
+            // Detectar la ruta de Python dinámicamente con múltiples fallbacks
+
+            try {
+              // Intentar primero con 'python3' (común en Linux/Mac)
+              try {
+                const { stdout: python3Path } = await execPromise('python3 -c "import sys; print(sys.executable)"');
+                pythonPath = python3Path.trim();
+                this.logger.log(`Using Python3 at: ${pythonPath}`);
+              } catch (python3Error) {
+                // Si falla python3, intentar con 'python'
+                const { stdout: pythonExePath } = await execPromise('python -c "import sys; print(sys.executable)"');
+                pythonPath = pythonExePath.trim();
+                this.logger.log(`Using Python at: ${pythonPath}`);
+              }
+            } catch (err) {
+              this.logger.warn(`Could not detect Python path automatically: ${err.message}`);
+              this.logger.warn(`Using fallback: ${pythonPath}`);
+              this.logger.warn('Tip: Set PYTHON_PATH environment variable to specify Python location explicitly');
+            }
+
             // Ejecutar script
-            const { stdout, stderr } = await execPromise(`python "${scriptPath}" "${file.path}"`);
+            const { stdout, stderr } = await execPromise(`"${pythonPath}" "${scriptPath}" "${file.path}"`);
 
             if (stderr && stderr.trim().length > 0) {
               this.logger.warn(`Python script warning/error: ${stderr}`);
@@ -59,7 +84,20 @@ export class OntologyService {
 
           } catch (conversionError) {
             this.logger.error(`Failed to convert OWL/XML: ${conversionError.message}`);
-            throw new Error("Failed to convert OWL/XML file. Please ensure Python and owlready2 are installed.");
+            this.logger.error(`Python path used: ${pythonPath}`);
+            this.logger.error(`Script path: ${scriptPath}`);
+
+            // Proporcionar mensaje de error más detallado
+            let errorMessage = "Failed to convert OWL/XML file. ";
+            if (conversionError.message.includes('owlready2')) {
+              errorMessage += "The owlready2 library is not installed. Please run: pip install owlready2";
+            } else if (conversionError.message.includes('python')) {
+              errorMessage += "Python is not accessible. Please ensure Python 3.x is installed and in PATH, or set PYTHON_PATH environment variable.";
+            } else {
+              errorMessage += `Error: ${conversionError.message}`;
+            }
+
+            throw new Error(errorMessage);
           }
         }
       }
@@ -142,10 +180,46 @@ export class OntologyService {
         `Document metadata saved: ${document.id} with ${triples.length} triples at ${filePath}`,
       );
 
-      // 2. Guardar tripletas en Fuseki
+      // 2. Inyectar documentId en el contenido RDF
+      // Agregar triples adicionales que vinculan cada sujeto con el documentId
+      const documentIdPredicate = 'http://example.org/hasDocumentId';
+
+      // Extraer todos los sujetos únicos
+      const uniqueSubjects = [...new Set(triples.map(t => t.subject))];
+
+      // Crear triples adicionales para documentId
+      const documentIdTriples = uniqueSubjects.map(subject => {
+        // Escapar el subject para RDF/XML
+        const escapedSubject = subject.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `  <rdf:Description rdf:about="${escapedSubject}">
+    <hasDocumentId xmlns="http://example.org/">${document.id}</hasDocumentId>
+  </rdf:Description>`;
+      }).join('\n');
+
+      // Inyectar los triples de documentId en el RDF
+      let enrichedRdfContent = rdfContent;
+
+      // Buscar la etiqueta de cierre </rdf:RDF> e insertar antes de ella
+      if (enrichedRdfContent.includes('</rdf:RDF>')) {
+        enrichedRdfContent = enrichedRdfContent.replace(
+          '</rdf:RDF>',
+          `${documentIdTriples}\n</rdf:RDF>`
+        );
+      } else {
+        // Si no tiene la estructura esperada, envolver el contenido
+        enrichedRdfContent = `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+${documentIdTriples}
+${rdfContent}
+</rdf:RDF>`;
+      }
+
+      this.logger.log(`Injected documentId metadata for ${uniqueSubjects.length} unique subjects`);
+
+      // 3. Guardar tripletas enriquecidas en Fuseki
       try {
-        await this.sparqlService.uploadRdf(rdfContent, "application/rdf+xml");
-        this.logger.log(`Triples uploaded to Fuseki for document ${document.id}`);
+        await this.sparqlService.uploadRdf(enrichedRdfContent, "application/rdf+xml");
+        this.logger.log(`Triples with documentId uploaded to Fuseki for document ${document.id}`);
       } catch (fusekiError) {
         // Si falla Fuseki, eliminar el documento de PostgreSQL
         await this.prisma.document.delete({ where: { id: document.id } });

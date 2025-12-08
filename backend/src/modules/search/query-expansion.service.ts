@@ -230,11 +230,22 @@ export class QueryExpansionService {
     /**
      * Construye una query SPARQL expandida
      */
-    buildExpandedSparqlQuery(expandedQuery: ExpandedQuery, language?: string): string {
+    buildExpandedSparqlQuery(expandedQuery: ExpandedQuery, language?: string, documentIds?: string[]): string {
         const allTerms = [expandedQuery.original, ...expandedQuery.expanded];
         const regexPattern = allTerms.map(t => this.escapeRegex(t)).join('|');
 
-        const languageFilter = language ? `FILTER(lang(?object) = "${language}")` : '';
+        // No aplicar filtro de idioma ya que los archivos OWL no usan etiquetas de idioma
+        const languageFilter = '';
+
+        // Construir filtro de documentId si se proporcionan IDs
+        let documentIdFilter = '';
+        if (documentIds && documentIds.length > 0) {
+            const docIdValues = documentIds.map(id => `"${id}"`).join(', ');
+            // Usar OPTIONAL para que la query funcione incluso si algunos triples no tienen documentId
+            documentIdFilter = `
+        OPTIONAL { ?subject <http://example.org/hasDocumentId> ?docId }
+        FILTER(!BOUND(?docId) || ?docId IN (${docIdValues}))`;
+        }
 
         return `
       SELECT DISTINCT ?subject ?predicate ?object
@@ -246,6 +257,7 @@ export class QueryExpansionService {
           regex(str(?object), "${regexPattern}", "i")
         )
         ${languageFilter}
+        ${documentIdFilter}
       }
       LIMIT 100
     `;

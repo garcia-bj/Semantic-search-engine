@@ -80,6 +80,31 @@ const translations = {
         dbpediaResults: 'DBpedia Results',
         externalSource: 'External Source',
         readMore: 'Read more on DBpedia'
+    },
+    pt: {
+        title: 'Busca Semântica',
+        knowledgeBase: 'Base de Conhecimento',
+        uploadButton: 'Enviar OWL/RDF',
+        uploading: 'Enviando...',
+        files: 'Arquivos',
+        noFiles: 'Nenhum arquivo enviado',
+        noFilesDesc: 'Envie arquivos OWL/RDF para começar',
+        searchPlaceholder: 'Pesquise em sua base de conhecimento (ex: "Person", "Organization", etc.)',
+        searching: 'Buscando...',
+        analyzingKB: 'Analisando a base de conhecimento e DBpedia',
+        resultsFound: 'resultado(s) encontrado(s)',
+        noResults: 'Nenhum resultado encontrado',
+        tryDifferent: 'Tente uma consulta diferente',
+        startSearch: 'Comece sua busca',
+        enterQuery: 'Digite uma consulta para ver resultados semânticos',
+        predicate: 'Predicado',
+        object: 'Objeto',
+        deleteFile: 'Excluir arquivo',
+        triples: 'triplas',
+        localResults: 'Resultados Locais',
+        dbpediaResults: 'Resultados do DBpedia',
+        externalSource: 'Fonte Externa',
+        readMore: 'Leia mais no DBpedia'
     }
 };
 
@@ -171,8 +196,8 @@ export default function SearchPage() {
         setDbpediaSource('none');
 
         try {
-            // Búsqueda local
-            const localRes = await fetch(`${API_URL}/search?query=${encodeURIComponent(query)}`);
+            // Búsqueda local con parámetro de idioma
+            const localRes = await fetch(`${API_URL}/search?query=${encodeURIComponent(query)}&language=${lang}`);
             if (localRes.ok) {
                 const data = await localRes.json();
                 setResults(data.results || []);

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 const dictionaries = {
     es: () => import('@/locales/es/common.json').then((module) => module.default),
     en: () => import('@/locales/en/common.json').then((module) => module.default),
+    pt: () => import('@/locales/pt/common.json').then((module) => module.default),
 };
 
 export type Locale = keyof typeof dictionaries;
@@ -14,5 +15,5 @@ export const getDictionary = async (locale: Locale) => {
     return dictionaries[locale]();
 };
 
-export const locales = ['es', 'en'] as const;
+export const locales = ['es', 'en', 'pt'] as const;
 export const defaultLocale = 'es' as const;
