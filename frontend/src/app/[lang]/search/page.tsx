@@ -208,7 +208,7 @@ export default function SearchPage() {
 
             try {
                 const dbpediaRes = await fetch(
-                    `${API_URL}/dbpedia-cache/search?q=${encodeURIComponent(query)}`,
+                    `${API_URL}/dbpedia-cache/search?q=${encodeURIComponent(query)}&lang=${lang}`,
                     { signal: AbortSignal.timeout(10000) } // 10s timeout
                 );
 

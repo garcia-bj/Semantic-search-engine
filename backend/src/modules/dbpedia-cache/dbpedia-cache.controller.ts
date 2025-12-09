@@ -9,13 +9,16 @@ export class DBpediaCacheController {
      * Búsqueda con fallback automático
      */
     @Get('search')
-    async search(@Query('q') query: string) {
+    async search(@Query('q') query: string, @Query('lang') language?: string) {
         if (!query) {
             return { error: 'Query parameter is required' };
         }
 
+        // Usar español por defecto si no se especifica idioma
+        const lang = language || 'es';
+
         try {
-            const result = await this.cacheService.searchWithFallback(query);
+            const result = await this.cacheService.searchWithFallback(query, lang);
             return {
                 success: true,
                 ...result,

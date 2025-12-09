@@ -9,13 +9,20 @@ export interface DBpediaSearchResult {
     cached: boolean;
     verified?: boolean;
     timestamp?: Date;
+    language?: string;
 }
 
 @Injectable()
 export class DBpediaCacheService {
     private readonly logger = new Logger(DBpediaCacheService.name);
     private readonly DBPEDIA_TIMEOUT = 8000; // 8 segundos
-    private readonly DBPEDIA_ENDPOINT = 'http://dbpedia.org/sparql';
+
+    // Endpoints por idioma
+    private readonly DBPEDIA_ENDPOINTS: Record<string, string> = {
+        'es': 'https://es.dbpedia.org/sparql',
+        'en': 'https://dbpedia.org/sparql',
+        'pt': 'https://pt.dbpedia.org/sparql',
+    };
 
     constructor(
         private prisma: PrismaService,
@@ -23,17 +30,24 @@ export class DBpediaCacheService {
     ) { }
 
     /**
-     * Búsqueda con fallback automático a caché
+     * Obtener endpoint según idioma
      */
-    async searchWithFallback(query: string): Promise<DBpediaSearchResult> {
-        this.logger.log(`Searching for: "${query}"`);
+    private getEndpoint(language: string): string {
+        return this.DBPEDIA_ENDPOINTS[language] || this.DBPEDIA_ENDPOINTS['en'];
+    }
+
+    /**
+     * Búsqueda con fallback automático
+     */
+    async searchWithFallback(query: string, language: string = 'es'): Promise<DBpediaSearchResult> {
+        this.logger.log(`Searching for: "${query}" in language: ${language}`);
 
         // 1. Intentar búsqueda online primero
         try {
-            const onlineResults = await this.searchDBpediaOnline(query);
+            const onlineResults = await this.searchDBpediaOnline(query, language);
 
-            // Guardar en caché para uso futuro
-            await this.saveToCache(query, onlineResults);
+            // Guardar en caché para uso futuro (con clave que incluye idioma)
+            await this.saveToCache(query, onlineResults, language);
 
             return {
                 source: 'online',
@@ -41,12 +55,13 @@ export class DBpediaCacheService {
                 cached: false,
                 verified: true,
                 timestamp: new Date(),
+                language,
             };
         } catch (error) {
             this.logger.warn(`Online search failed: ${error.message}, trying cache...`);
 
             // 2. Usar caché si falla la búsqueda online
-            const cachedResults = await this.searchCache(query);
+            const cachedResults = await this.searchCache(query, language);
 
             if (cachedResults) {
                 return {
@@ -55,6 +70,7 @@ export class DBpediaCacheService {
                     cached: true,
                     verified: cachedResults.verified,
                     timestamp: cachedResults.createdAt,
+                    language,
                 };
             }
 
@@ -66,12 +82,15 @@ export class DBpediaCacheService {
     /**
      * Búsqueda en DBpedia con timeout
      */
-    private async searchDBpediaOnline(query: string): Promise<any[]> {
-        const sparqlQuery = this.buildSPARQLQuery(query);
+    private async searchDBpediaOnline(query: string, language: string = 'es'): Promise<any[]> {
+        const sparqlQuery = this.buildSPARQLQuery(query, language);
+        const endpoint = this.getEndpoint(language);
+
+        this.logger.log(`Using DBpedia endpoint: ${endpoint}`);
 
         try {
             const response = await firstValueFrom(
-                this.httpService.get(this.DBPEDIA_ENDPOINT, {
+                this.httpService.get(endpoint, {
                     params: {
                         query: sparqlQuery,
                         format: 'json',
@@ -92,7 +111,7 @@ export class DBpediaCacheService {
     /**
      * Construir query SPARQL para DBpedia
      */
-    private buildSPARQLQuery(query: string): string {
+    private buildSPARQLQuery(query: string, language: string = 'es'): string {
         const escapedQuery = query.replace(/"/g, '\\"');
 
         return `
@@ -105,10 +124,10 @@ export class DBpediaCacheService {
       WHERE {
         ?resource rdfs:label ?label .
         FILTER(regex(?label, "${escapedQuery}", "i"))
-        FILTER(lang(?label) = 'en' || lang(?label) = 'es')
+        FILTER(lang(?label) = '${language}' || lang(?label) = '')
         OPTIONAL { 
           ?resource dbo:abstract ?abstract .
-          FILTER(lang(?abstract) = 'en' || lang(?abstract) = 'es')
+          FILTER(lang(?abstract) = '${language}' || lang(?abstract) = '')
         }
         OPTIONAL { ?resource rdf:type ?type }
       }
@@ -127,20 +146,23 @@ export class DBpediaCacheService {
             label: binding.label?.value || '',
             abstract: binding.abstract?.value || '',
             type: binding.type?.value || '',
+            resource: binding.resource?.value || '', // Agregar para compatibilidad con frontend
         }));
     }
 
     /**
      * Guardar resultados en caché
      */
-    private async saveToCache(query: string, results: any[]): Promise<void> {
+    private async saveToCache(query: string, results: any[], language: string = 'es'): Promise<void> {
         try {
             const category = this.detectCategory(query, results);
+            // Usar query + idioma como clave única
+            const cacheKey = `${query}_${language}`;
 
             await this.prisma.dBpediaCache.upsert({
-                where: { query },
+                where: { query: cacheKey },
                 create: {
-                    query,
+                    query: cacheKey,
                     results: results as any,
                     category,
                     verified: true,
@@ -155,7 +177,7 @@ export class DBpediaCacheService {
                 },
             });
 
-            this.logger.log(`Cached results for: "${query}"`);
+            this.logger.log(`Cached results for: "${query}" (${language})`);
         } catch (error) {
             this.logger.error(`Failed to cache results: ${error.message}`);
         }
@@ -164,11 +186,12 @@ export class DBpediaCacheService {
     /**
      * Buscar en caché local
      */
-    private async searchCache(query: string): Promise<any | null> {
+    private async searchCache(query: string, language: string = 'es'): Promise<any | null> {
         try {
-            // Búsqueda exacta
+            // Búsqueda exacta con idioma
+            const cacheKey = `${query}_${language}`;
             let cached = await this.prisma.dBpediaCache.findUnique({
-                where: { query },
+                where: { query: cacheKey },
             });
 
             // Si no hay coincidencia exacta, buscar similar
@@ -187,7 +210,7 @@ export class DBpediaCacheService {
             }
 
             if (cached) {
-                this.logger.log(`Cache hit for: "${query}"`);
+                this.logger.log(`Cache hit for: "${query}" (${language})`);
             }
 
             return cached;
@@ -229,7 +252,7 @@ export class DBpediaCacheService {
     /**
      * Verificar entrada de caché contra DBpedia
      */
-    async verifyEntry(id: string): Promise<boolean> {
+    async verifyEntry(id: string, language: string = 'es'): Promise<boolean> {
         try {
             const entry = await this.prisma.dBpediaCache.findUnique({
                 where: { id },
@@ -237,8 +260,11 @@ export class DBpediaCacheService {
 
             if (!entry) return false;
 
+            // Extraer query original sin el sufijo de idioma
+            const originalQuery = entry.query.replace(/_[a-z]{2}$/, '');
+
             // Buscar en DBpedia
-            const freshResults = await this.searchDBpediaOnline(entry.query);
+            const freshResults = await this.searchDBpediaOnline(originalQuery, language);
 
             // Comparar resultados (simple: comparar cantidad y primeros URIs)
             const isValid = this.compareResults(entry.results as any[], freshResults);
