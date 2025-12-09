@@ -117,7 +117,7 @@ export default function SearchPage() {
     const [files, setFiles] = useState<Document[]>([]);
     const [results, setResults] = useState<SearchResult[]>([]);
     const [dbpediaResults, setDbpediaResults] = useState<DBpediaResult[]>([]);
-    const [dbpediaSource, setDbpediaSource] = useState<'online' | 'cache' | 'none'>('none');
+    const [dbpediaSource, setDbpediaSource] = useState<'online' | 'cache' | 'offline' | 'none'>('none');
     const [dbpediaVerified, setDbpediaVerified] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
@@ -226,6 +226,8 @@ export default function SearchPage() {
                             showSuccess(`${data.results.length} resultados encontrados en DBpedia`);
                         } else if (data.source === 'cache') {
                             showWarning(`Usando caché offline (${data.results.length} resultados)`);
+                        } else if (data.source === 'offline') {
+                            showWarning(`Usando base de conocimiento local (${data.results.length} resultados)`);
                         }
                     } else {
                         showWarning('No se encontraron resultados en DBpedia');

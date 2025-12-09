@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface DBpediaSearchResult {
-    source: 'online' | 'cache';
+    source: 'online' | 'cache' | 'offline';
     results: any[];
     cached: boolean;
     verified?: boolean;
@@ -12,8 +14,18 @@ export interface DBpediaSearchResult {
     language?: string;
 }
 
+interface HarvestedEntry {
+    uri: string;
+    label: string;
+    abstract: string;
+    genre: string;
+    network: string;
+    startDate: string;
+    resource: string;
+}
+
 @Injectable()
-export class DBpediaCacheService {
+export class DBpediaCacheService implements OnModuleInit {
     private readonly logger = new Logger(DBpediaCacheService.name);
     private readonly DBPEDIA_TIMEOUT = 8000; // 8 segundos
 
@@ -21,13 +33,76 @@ export class DBpediaCacheService {
     private readonly DBPEDIA_ENDPOINTS: Record<string, string> = {
         'es': 'https://es.dbpedia.org/sparql',
         'en': 'https://dbpedia.org/sparql',
-        'pt': 'https://pt.dbpedia.org/sparql',
+        'pt': 'https://dbpedia.org/sparql', // pt.dbpedia.org is often down
+    };
+
+    // Datos offline cargados en memoria
+    private offlineData: Record<string, HarvestedEntry[]> = {
+        'en': [],
+        'es': [],
+        'pt': [],
     };
 
     constructor(
         private prisma: PrismaService,
         private httpService: HttpService,
     ) { }
+
+    /**
+     * Cargar datos offline al iniciar el módulo
+     */
+    async onModuleInit() {
+        await this.loadOfflineData();
+    }
+
+    /**
+     * Cargar archivos JSON de datos harvested
+     */
+    private async loadOfflineData() {
+        // Usar process.cwd() para obtener la raíz del proyecto
+        const dataDir = path.join(process.cwd(), 'harvested_data');
+        const languages = ['en', 'es', 'pt'];
+
+        for (const lang of languages) {
+            const filePath = path.join(dataDir, `series_${lang}.json`);
+            try {
+                if (fs.existsSync(filePath)) {
+                    const data = fs.readFileSync(filePath, 'utf-8');
+                    this.offlineData[lang] = JSON.parse(data);
+                    this.logger.log(`Loaded ${this.offlineData[lang].length} offline entries for ${lang.toUpperCase()}`);
+                } else {
+                    this.logger.warn(`Offline data file not found: ${filePath}`);
+                }
+            } catch (error) {
+                this.logger.error(`Failed to load offline data for ${lang}: ${error.message}`);
+            }
+        }
+
+        const totalEntries = Object.values(this.offlineData).reduce((sum, arr) => sum + arr.length, 0);
+        this.logger.log(`Total offline knowledge base: ${totalEntries} entries`);
+    }
+
+    /**
+     * Buscar en datos offline locales
+     */
+    private searchOfflineData(query: string, language: string): any[] {
+        const data = this.offlineData[language] || [];
+        const queryLower = query.toLowerCase();
+
+        const results = data.filter(entry => {
+            const labelMatch = entry.label?.toLowerCase().includes(queryLower);
+            const abstractMatch = entry.abstract?.toLowerCase().includes(queryLower);
+            return labelMatch || abstractMatch;
+        }).slice(0, 20); // Limitar a 20 resultados
+
+        return results.map(entry => ({
+            uri: entry.uri,
+            label: entry.label,
+            abstract: entry.abstract,
+            type: entry.genre || '',
+            resource: entry.resource || entry.uri,
+        }));
+    }
 
     /**
      * Obtener endpoint según idioma
@@ -37,7 +112,7 @@ export class DBpediaCacheService {
     }
 
     /**
-     * Búsqueda con fallback automático
+     * Búsqueda con fallback automático (online -> cache DB -> offline JSON)
      */
     async searchWithFallback(query: string, language: string = 'es'): Promise<DBpediaSearchResult> {
         this.logger.log(`Searching for: "${query}" in language: ${language}`);
@@ -60,10 +135,10 @@ export class DBpediaCacheService {
         } catch (error) {
             this.logger.warn(`Online search failed: ${error.message}, trying cache...`);
 
-            // 2. Usar caché si falla la búsqueda online
+            // 2. Usar caché de base de datos si falla la búsqueda online
             const cachedResults = await this.searchCache(query, language);
 
-            if (cachedResults) {
+            if (cachedResults && cachedResults.results?.length > 0) {
                 return {
                     source: 'cache',
                     results: cachedResults.results,
@@ -74,8 +149,24 @@ export class DBpediaCacheService {
                 };
             }
 
-            // 3. No hay resultados ni online ni en caché
-            throw new Error('No results found online or in cache');
+            // 3. Buscar en datos offline (JSON harvested)
+            this.logger.log(`Searching offline data for: "${query}"`);
+            const offlineResults = this.searchOfflineData(query, language);
+
+            if (offlineResults.length > 0) {
+                this.logger.log(`Found ${offlineResults.length} results in offline data`);
+                return {
+                    source: 'offline',
+                    results: offlineResults,
+                    cached: true,
+                    verified: false, // No verificado porque no hay conexión
+                    timestamp: new Date(),
+                    language,
+                };
+            }
+
+            // 4. No hay resultados en ninguna fuente
+            throw new Error('No results found online, in cache, or offline');
         }
     }
 
@@ -304,7 +395,7 @@ export class DBpediaCacheService {
     }
 
     /**
-     * Obtener estadísticas de caché
+     * Obtener estadísticas de caché y datos offline
      */
     async getCacheStats() {
         const total = await this.prisma.dBpediaCache.count();
@@ -316,14 +407,24 @@ export class DBpediaCacheService {
             _count: true,
         });
 
+        const offlineStats = {
+            en: this.offlineData['en'].length,
+            es: this.offlineData['es'].length,
+            pt: this.offlineData['pt'].length,
+            total: Object.values(this.offlineData).reduce((sum, arr) => sum + arr.length, 0),
+        };
+
         return {
-            total,
-            verified,
-            unverified: total - verified,
-            byCategory: byCategory.map(c => ({
-                category: c.category,
-                count: c._count,
-            })),
+            cache: {
+                total,
+                verified,
+                unverified: total - verified,
+                byCategory: byCategory.map(c => ({
+                    category: c.category,
+                    count: c._count,
+                })),
+            },
+            offline: offlineStats,
         };
     }
 }
