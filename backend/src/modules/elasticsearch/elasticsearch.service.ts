@@ -207,7 +207,7 @@ export class ElasticsearchService implements OnModuleInit {
     /**
      * Eliminar todas las tripletas de un documento
      */
-    async deleteByDocumentId(documentId: string): Promise<void> {
+    async deleteDocumentTriples(documentId: string): Promise<void> {
         try {
             await this.client.deleteByQuery({
                 index: this.indexName,

@@ -1,249 +1,336 @@
-# 🎨 Frontend - Arquitectura y Documentación Técnica
+# 🎨 Frontend - Next.js 16 Progressive Web App
 
-## 📋 Índice
-- [Descripción General](#descripción-general)
-- [Arquitectura](#arquitectura)
-- [Estructura de Directorios](#estructura-de-directorios)
-- [Internacionalización (i18n)](#internacionalización-i18n)
-- [Componentes Principales](#componentes-principales)
-- [Integración con Backend](#integración-con-backend)
-- [Comandos y Scripts](#comandos-y-scripts)
+> **Documentación Técnica Completa del Frontend**
+
+Esta es la interfaz de usuario de Synapse Search. Una aplicación moderna construida con **Next.js 16** utilizando el nuevo **App Router** para máximo rendimiento, SEO y experiencia de usuario.
 
 ---
 
-## 📖 Descripción General
+## 📑 Tabla de Contenidos
 
-El frontend es una aplicación **Next.js 15** (App Router) que proporciona una interfaz moderna y reactiva para el motor de búsqueda semántica. Implementa características avanzadas como internacionalización nativa, integración con DBpedia, PWA, y una experiencia de usuario fluida.
-
-**Características principales**:
-- **Progressive Web App (PWA)**: Instalable, funciona offline, caché inteligente
-- Interfaz multilingüe (Español/Inglés) con rutas dinámicas
-- Búsqueda híbrida (local + DBpedia) en tiempo real
-- Gestión de archivos OWL/RDF con visualización de metadatos
-- Diseño responsive y moderno con Tailwind CSS
-- Optimización SEO con Server-Side Rendering (SSR)
-- IndexedDB para almacenamiento offline
+- [Arquitectura del Frontend](#️-arquitectura-del-frontend)
+- [Stack Tecnológico](#️-stack-tecnológico)
+- [Estructura del Proyecto](#-estructura-del-proyecto)
+- [Instalación y Configuración](#-instalación-y-configuración)
+- [Características Técnicas](#-características-técnicas)
+- [Internacionalización (i18n)](#-internacionalización-i18n)
+- [Progressive Web App (PWA)](#-progressive-web-app-pwa)
+- [Patrones de Diseño](#-patrones-de-diseño)
+- [Optimizaciones](#-optimizaciones)
+- [Troubleshooting](#-troubleshooting)
 
 ---
 
-## 🏗️ Arquitectura
+## 🏗️ Arquitectura del Frontend
+
+El frontend está diseñado como una **aplicación híbrida (SSR + CSR)** optimizada para la Web Semántica, implementando el patrón **Islands Architecture** de Next.js.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    USUARIO (Navegador)                   │
+│              Cliente (Navegador / PWA)                  │
 └────────────────────┬────────────────────────────────────┘
                      │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│              NEXT.JS 15 (App Router)                     │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Routing Layer                                   │   │
-│  │  - /[lang]              → Home (ES/EN)           │   │
-│  │  - /[lang]/search       → Búsqueda               │   │
-│  │  - /                    → Redirect a /es         │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Components                                      │   │
-│  │  - LanguageSelector: Cambio de idioma            │   │
-│  │  - SearchPage: Interfaz de búsqueda              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Libraries (src/lib/)                            │   │
-│  │  - i18n.ts: Sistema de traducciones              │   │
-│  │  - dbpedia.ts: Cliente API DBpedia               │   │
-│  └──────────────────────────────────────────────────┘   │
-└───────────────────┬──────────────────────────────────────┘
-                    │ HTTP/REST
-                    ▼
-┌─────────────────────────────────────────────────────────┐
-│              BACKEND (NestJS - Port 3001)                │
-└─────────────────────────────────────────────────────────┘
-                    │ HTTP
-                    ▼
-┌─────────────────────────────────────────────────────────┐
-│              DBPEDIA (API Externa)                       │
-└─────────────────────────────────────────────────────────┘
+        ┌────────────▼────────────┐
+        │   Next.js 16 Server     │
+        │    (App Router)         │
+        └────┬──────────────┬─────┘
+             │              │
+    ┌────────▼────┐  ┌──────▼──────┐
+    │   Server    │  │   Client    │
+    │ Components  │  │ Components  │
+    │   (RSC)     │  │ ('use client')│
+    └────┬────────┘  └──────┬──────┘
+         │                  │
+    ┌────▼──────────────────▼─────┐
+    │     Backend API (3001)      │
+    │   (NestJS REST Endpoints)   │
+    └─────────────────────────────┘
 ```
+
+### Server Components vs Client Components
+
+| Tipo | Cuándo Usar | Ejemplos |
+|------|-------------|----------|
+| **Server Components** | Fetch de datos, SEO, contenido estático | `page.tsx`, `layout.tsx` |
+| **Client Components** | Interactividad, hooks, eventos | `SearchBar.tsx`, `FileUpload.tsx` |
 
 ---
 
-## 📂 Estructura de Directorios
+## 🛠️ Stack Tecnológico
+
+### Core Framework
+
+| Tecnología | Versión | Propósito |
+|------------|---------|-----------|
+| **Next.js** | 16.0.4 | Framework React con App Router |
+| **React** | 19.2.0 | Librería UI (Server Components) |
+| **TypeScript** | ^5 | Tipado estático |
+| **Node.js** | 18+ | Runtime (solo para build/dev) |
+
+### Estilos y UI
+
+| Librería | Versión | Uso |
+|----------|---------|-----|
+| **TailwindCSS** | ^4 | Utility-first CSS (Zero-runtime) |
+| **@tailwindcss/typography** | ^0.5.10 | Estilos para contenido markdown |
+| **clsx** | ^2.1.0 | Utilidad para clases condicionales |
+
+### Internacionalización
+
+| Librería | Versión | Uso |
+|----------|---------|-----|
+| **i18next** | ^25.6.3 | Core de i18n |
+| **react-i18next** | ^16.3.5 | Bindings para React |
+| **next-i18next** | ^15.4.2 | Integración con Next.js |
+
+### PWA y Offline
+
+| Librería | Versión | Uso |
+|----------|---------|-----|
+| **next-pwa** | ^5.6.0 | Service Worker y manifest |
+| **workbox** | (incluido) | Estrategias de caché |
+| **idb** | ^8.0.3 | IndexedDB wrapper |
+
+### Networking
+
+| Librería | Versión | Uso |
+|----------|---------|-----|
+| **axios** | ^1.6.5 | Cliente HTTP (alternativa a fetch) |
+| **swr** | ^2.2.4 | Caché de datos y revalidación |
+
+---
+
+## 📂 Estructura del Proyecto
 
 ```
 frontend/
 ├── src/
-│   ├── app/                    # Rutas de Next.js (App Router)
-│   │   ├── [lang]/             # Rutas dinámicas por idioma
-│   │   │   ├── page.tsx        # Home page (ES/EN)
-│   │   │   └── search/
-│   │   │       └── page.tsx    # Página de búsqueda
-│   │   ├── layout.tsx          # Layout raíz (HTML wrapper + PWA meta)
-│   │   ├── page.tsx            # Redirect a /es
-│   │   └── globals.css         # Estilos globales
-│   ├── components/             # Componentes reutilizables
-│   │   ├── LanguageSelector.tsx
-│   │   ├── OfflineBanner.tsx   # Banner modo offline
-│   │   └── InstallPrompt.tsx   # Prompt instalación PWA
-│   ├── hooks/                  # Custom React hooks
-│   │   └── useOnlineStatus.ts  # Detección online/offline
-│   ├── lib/                    # Librerías y utilidades
-│   │   ├── i18n.ts             # Sistema de internacionalización
-│   │   ├── dbpedia.ts          # Cliente API DBpedia
-│   │   └── db.ts               # IndexedDB wrapper
-│   └── locales/                # Archivos de traducción
-│       ├── es/
-│       │   └── common.json     # Traducciones en español
-│       └── en/
-│           └── common.json     # Traducciones en inglés
-├── public/                     # Archivos estáticos
-│   ├── manifest.json           # PWA manifest
-│   ├── offline.html            # Página offline fallback
-│   ├── sw.js                   # Service Worker (generado)
-│   ├── icon-192x192.png        # Ícono PWA pequeño
-│   └── icon-512x512.png        # Ícono PWA grande
-├── .env.local                  # Variables de entorno
-├── next.config.js              # Configuración Next.js + PWA
-├── tailwind.config.ts          # Configuración de Tailwind
-└── package.json                # Dependencias
+│   ├── app/                          # App Router (Next.js 13+)
+│   │   ├── [lang]/                   # 🌍 Rutas dinámicas por idioma
+│   │   │   ├── layout.tsx            # Layout compartido (Navbar, Footer)
+│   │   │   ├── page.tsx              # Página principal (/)
+│   │   │   └── search/               # Ruta de búsqueda
+│   │   │       ├── page.tsx          # Server Component principal
+│   │   │       ├── loading.tsx       # Skeleton de carga
+│   │   │       └── error.tsx         # Boundary de errores
+│   │   ├── api/                      # Route Handlers (API Routes)
+│   │   │   └── health/route.ts       # Health check endpoint
+│   │   ├── layout.tsx                # Root layout (HTML, body)
+│   │   └── globals.css               # Estilos globales de Tailwind
+│   │
+│   ├── components/                   # 🧩 Componentes reutilizables
+│   │   ├── ui/                       # Primitivos (Button, Input, Card)
+│   │   │   ├── Button.tsx
+│   │   │   ├── Input.tsx
+│   │   │   └── Card.tsx
+│   │   ├── search/                   # Componentes de búsqueda
+│   │   │   ├── SearchBar.tsx         # 'use client' - Input con debounce
+│   │   │   ├── SearchResults.tsx     # Grid de resultados
+│   │   │   └── ResultCard.tsx        # Tarjeta individual
+│   │   ├── layout/                   # Layout components
+│   │   │   ├── Navbar.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   └── Footer.tsx
+│   │   ├── SourceIndicator.tsx       # Badge de origen (Online/Offline)
+│   │   └── ToastContainer.tsx        # Notificaciones
+│   │
+│   ├── lib/                          # 🛠️ Utilidades y helpers
+│   │   ├── api-client.ts             # Wrapper de fetch con manejo de errores
+│   │   ├── i18n-config.ts            # Configuración de idiomas
+│   │   ├── utils.ts                  # Funciones auxiliares
+│   │   └── constants.ts              # Constantes globales
+│   │
+│   ├── locales/                      # 📖 Diccionarios de traducción
+│   │   ├── es.json                   # Español
+│   │   ├── en.json                   # English
+│   │   └── pt.json                   # Português
+│   │
+│   ├── types/                        # 📝 Definiciones de TypeScript
+│   │   ├── api.ts                    # Tipos de respuestas API
+│   │   └── search.ts                 # Tipos de búsqueda
+│   │
+│   └── middleware.ts                 # Middleware de Next.js (i18n redirect)
+│
+├── public/                           # Archivos estáticos
+│   ├── icons/                        # Iconos PWA
+│   ├── manifest.json                 # PWA manifest
+│   ├── sw.js                         # Service Worker (generado)
+│   └── workbox-*.js                  # Workbox runtime (generado)
+│
+├── next.config.js                    # Configuración de Next.js
+├── tailwind.config.ts                # Configuración de Tailwind
+├── tsconfig.json                     # Configuración de TypeScript
+└── package.json                      # Dependencias
+```
+
+---
+
+## 🚀 Instalación y Configuración
+
+### 1. Instalar Dependencias
+
+```bash
+cd frontend
+npm install
+```
+
+### 2. Configurar Variables de Entorno
+
+Crea un archivo `.env.local`:
+
+```env
+# URL del Backend API
+NEXT_PUBLIC_API_URL=http://localhost:3001
+
+# Configuración de Build
+NODE_ENV=development
+```
+
+### 3. Iniciar Servidor de Desarrollo
+
+```bash
+# Modo desarrollo (hot-reload)
+npm run dev
+
+# Build de producción
+npm run build
+
+# Servidor de producción
+npm run start
+```
+
+**URLs:**
+- Desarrollo: `http://localhost:3000`
+- Producción: `http://localhost:3000`
+
+---
+
+## 🎯 Características Técnicas
+
+### 1. Server Components (RSC)
+
+Next.js 16 introduce **React Server Components** por defecto. Esto significa que los componentes se renderizan en el servidor a menos que uses `'use client'`.
+
+**Ventajas:**
+- ✅ Menor bundle de JavaScript en el cliente
+- ✅ Acceso directo a bases de datos (si fuera necesario)
+- ✅ SEO mejorado (HTML completo desde el servidor)
+
+**Ejemplo:**
+```typescript
+// app/[lang]/search/page.tsx (Server Component)
+export default async function SearchPage({ params }: { params: { lang: string } }) {
+  // Este código se ejecuta en el servidor
+  const initialData = await fetch(`${API_URL}/search?query=initial`);
+  
+  return (
+    <div>
+      <SearchBar /> {/* Client Component */}
+      <SearchResults data={initialData} />
+    </div>
+  );
+}
+```
+
+### 2. App Router (File-based Routing)
+
+El App Router usa el sistema de archivos para definir rutas:
+
+| Archivo | Ruta | Tipo |
+|---------|------|------|
+| `app/page.tsx` | `/` | Página |
+| `app/layout.tsx` | Todas | Layout |
+| `app/[lang]/page.tsx` | `/es`, `/en`, `/pt` | Dinámica |
+| `app/[lang]/search/page.tsx` | `/es/search` | Anidada |
+
+### 3. Middleware para i18n
+
+El archivo `middleware.ts` intercepta todas las requests para redirigir según el idioma:
+
+```typescript
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  
+  // Si la ruta no tiene idioma, detectar y redirigir
+  if (pathname === '/') {
+    const locale = request.headers.get('accept-language')?.split(',')[0].split('-')[0] || 'es';
+    return NextResponse.redirect(new URL(`/${locale}`, request.url));
+  }
+  
+  return NextResponse.next();
+}
 ```
 
 ---
 
 ## 🌍 Internacionalización (i18n)
 
-### Implementación
+### Configuración
 
-El sistema de i18n está implementado usando **rutas dinámicas** de Next.js 15, sin dependencias externas.
+El sistema i18n está configurado en `lib/i18n-config.ts`:
 
-#### **`src/lib/i18n.ts`** - Sistema de Traducciones
 ```typescript
-export const locales = ['es', 'en'] as const;
-export type Locale = typeof locales[number];
+export const i18n = {
+  defaultLocale: 'es',
+  locales: ['es', 'en', 'pt'],
+} as const;
 
-export const getDictionary = async (locale: Locale) => {
-  return dictionaries[locale]();
-};
+export type Locale = (typeof i18n)['locales'][number];
 ```
 
-**Características**:
-- Carga dinámica de diccionarios (code splitting)
-- Type-safe con TypeScript
-- Soporte para async/await
+### Diccionarios
 
----
+Los diccionarios están en `locales/{lang}.json`:
 
-### Estructura de Rutas
-
-| URL | Idioma | Componente |
-|-----|--------|------------|
-| `/` | - | Redirect a `/es` |
-| `/es` | Español | Home page |
-| `/en` | Inglés | Home page |
-| `/es/search` | Español | Búsqueda |
-| `/en/search` | Inglés | Búsqueda |
-
----
-
-### Archivos de Traducción
-
-#### **`src/locales/es/common.json`**
 ```json
+// locales/es.json
 {
-  "home": {
-    "title": "Buscador Semántico",
-    "subtitle": "Búsqueda Inteligente",
-    "getStarted": "Comenzar Búsqueda"
+  "search": {
+    "placeholder": "Buscar series...",
+    "button": "Buscar",
+    "noResults": "No se encontraron resultados"
   },
-  "knowledge": {
-    "title": "Base de Conocimiento"
+  "upload": {
+    "title": "Subir archivo",
+    "button": "Seleccionar archivo"
   }
 }
 ```
-
-#### **`src/locales/en/common.json`**
-```json
-{
-  "home": {
-    "title": "Semantic Search",
-    "subtitle": "Intelligent Search",
-    "getStarted": "Get Started"
-  },
-  "knowledge": {
-    "title": "Knowledge Base"
-  }
-}
-```
-
----
 
 ### Uso en Componentes
 
-#### Server Components (Async)
 ```typescript
-// app/[lang]/page.tsx
-export default async function Home({ 
-  params 
-}: { 
-  params: Promise<{ lang: Locale }> 
-}) {
-  const { lang } = await params;
-  const dict = await getDictionary(lang);
+'use client';
+import { useTranslation } from 'react-i18next';
 
-  return <h1>{dict.home.title}</h1>;
+export function SearchBar() {
+  const { t } = useTranslation();
+  
+  return (
+    <input 
+      placeholder={t('search.placeholder')} 
+      aria-label={t('search.button')}
+    />
+  );
 }
 ```
 
-#### Client Components (Inline)
+### Cambio de Idioma
+
+El cambio de idioma se hace mediante navegación:
+
 ```typescript
-// app/[lang]/search/page.tsx
-'use client';
+import Link from 'next/link';
 
-const translations = {
-  es: { search: 'Buscar' },
-  en: { search: 'Search' }
-};
-
-export default function SearchPage() {
-  const params = useParams();
-  const lang = params.lang as Locale;
-  const t = translations[lang];
-
-  return <button>{t.search}</button>;
-}
-```
-
----
-
-## 🧩 Componentes Principales
-
-### 1. **`LanguageSelector.tsx`** - Selector de Idioma
-**Ubicación**: `src/components/LanguageSelector.tsx`
-
-**Propósito**: Permite al usuario cambiar entre español e inglés.
-
-**Características**:
-- Componente cliente (`'use client'`)
-- Usa `useRouter` y `usePathname` de Next.js
-- Cambia la URL preservando la ruta actual
-
-**Implementación**:
-```typescript
-'use client';
-
-export default function LanguageSelector({ currentLang }: Props) {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  const switchLanguage = (newLang: Locale) => {
-    const segments = pathname.split('/');
-    segments[1] = newLang;  // Reemplaza el segmento de idioma
-    router.push(segments.join('/'));
-  };
-
+export function LanguageSelector({ currentLang }: { currentLang: string }) {
   return (
     <div>
-      <button onClick={() => switchLanguage('es')}>🇪🇸 ES</button>
-      <button onClick={() => switchLanguage('en')}>🇬🇧 EN</button>
+      <Link href="/es/search">ES</Link>
+      <Link href="/en/search">EN</Link>
+      <Link href="/pt/search">PT</Link>
     </div>
   );
 }
@@ -251,365 +338,268 @@ export default function LanguageSelector({ currentLang }: Props) {
 
 ---
 
-### 2. **`app/[lang]/page.tsx`** - Home Page
-**Propósito**: Página de inicio con presentación del proyecto.
-
-**Características**:
-- Server Component (SSR)
-- Traducciones dinámicas según idioma
-- Animaciones con Tailwind CSS
-- Links a la página de búsqueda
-
-**Secciones**:
-- Hero con título y descripción
-- Tarjetas de características (3 columnas)
-- Footer con información
-
----
-
-### 3. **`app/[lang]/search/page.tsx`** - Página de Búsqueda
-**Propósito**: Interfaz principal de búsqueda con gestión de archivos.
-
-**Características**:
-- Client Component (`'use client'`)
-- Búsqueda híbrida (local + DBpedia)
-- Sidebar con lista de archivos
-- Resultados en dos columnas (local | DBpedia)
-
-**Estados manejados**:
-```typescript
-const [query, setQuery] = useState('');
-const [files, setFiles] = useState<Document[]>([]);
-const [results, setResults] = useState<SearchResult[]>([]);
-const [dbpediaResults, setDbpediaResults] = useState<DBpediaResult[]>([]);
-const [isUploading, setIsUploading] = useState(false);
-const [isSearching, setIsSearching] = useState(false);
-const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-```
-
-**Funcionalidades**:
-1. **Carga de archivos**: Drag & drop o click para subir `.owl`/`.rdf`
-2. **Lista de archivos**: Muestra archivos subidos con opción de eliminar
-3. **Búsqueda**: Input con autocompletado y búsqueda en tiempo real
-4. **Resultados**:
-   - Columna izquierda: Resultados de DBpedia
-   - Columna derecha: Resultados locales
-5. **Sidebar responsive**: Colapsable en móviles
-
----
-
-## 🔌 Integración con Backend
-
-### **`src/lib/dbpedia.ts`** - Cliente DBpedia
-```typescript
-export async function searchDBpedia(
-  query: string, 
-  lang: Locale
-): Promise<DBpediaResult[]> {
-  const response = await fetch(
-    `http://lookup.dbpedia.org/api/search?query=${query}&lang=${lang}`
-  );
-  return response.json();
-}
-```
-
----
-
-### API Calls al Backend
-
-#### Subir Archivo
-```typescript
-const handleUpload = async (file: File) => {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const res = await fetch(`${API_URL}/upload`, {
-    method: 'POST',
-    body: formData,
-  });
-};
-```
-
-#### Búsqueda
-```typescript
-const handleSearch = async (query: string) => {
-  const [localRes, dbpediaRes] = await Promise.all([
-    fetch(`${API_URL}/search?q=${query}`),
-    searchDBpedia(query, lang)
-  ]);
-};
-```
-
-#### Listar Archivos
-```typescript
-const fetchFiles = async () => {
-  const res = await fetch(`${API_URL}/upload/documents`);
-  const data = await res.json();
-  setFiles(data);
-};
-```
-
-#### Eliminar Archivo
-```typescript
-const handleDelete = async (id: string) => {
-  await fetch(`${API_URL}/upload/documents/${id}`, {
-    method: 'DELETE'
-  });
-};
-```
-
----
-
-## 🎨 Diseño y Estilos
-
-### Tailwind CSS
-**Configuración**: `tailwind.config.ts`
-
-**Paleta de colores**:
-- Púrpura: `purple-400` a `purple-950`
-- Rosa: `pink-400` a `pink-600`
-- Slate: `slate-300` a `slate-950`
-
-**Efectos visuales**:
-- Gradientes: `bg-gradient-to-br from-purple-500 to-pink-500`
-- Blur: `backdrop-blur-xl`
-- Sombras: `shadow-2xl shadow-purple-500/20`
-- Animaciones: `animate-pulse`, `hover:scale-105`
-
----
-
-## 🚀 Comandos y Scripts
-
-### Desarrollo
-```bash
-# Instalar dependencias
-npm install
-
-# Modo desarrollo (hot-reload)
-npm run dev
-# Acceder a: http://localhost:3000
-```
-
-### Producción
-```bash
-# Build optimizado
-npm run build
-
-# Ejecutar build
-npm start
-```
-
-### Linting
-```bash
-# Verificar código
-npm run lint
-```
-
----
-
-## 🔧 Variables de Entorno
-
-**Archivo**: `.env.local`
-
-```env
-# URL del backend
-NEXT_PUBLIC_API_URL=http://localhost:3001
-```
-
-**Nota**: Variables con prefijo `NEXT_PUBLIC_` son accesibles en el cliente.
-
----
-
-## 📦 Dependencias Clave
-
-| Paquete | Versión | Propósito |
-|---------|---------|-----------|
-| `next` | ^16.0.0 | Framework React con SSR |
-| `react` | ^19.0.0 | Biblioteca UI |
-| `next-pwa` | ^5.6.0 | PWA support con Workbox |
-| `idb` | ^8.0.0 | IndexedDB wrapper |
-| `tailwindcss` | ^4.0.0 | Framework CSS |
-| `typescript` | ^5.0.0 | Tipado estático |
-
----
-
-## 🎯 Flujos de Usuario
-
-### Flujo de Búsqueda
-```
-1. Usuario ingresa término en input
-   ↓
-2. Click en botón de búsqueda
-   ↓
-3. Llamadas paralelas:
-   - Backend (local): /search?q=term
-   - DBpedia (externa): lookup.dbpedia.org
-   ↓
-4. Combinar resultados
-   ↓
-5. Renderizar en dos columnas
-   - Izquierda: DBpedia (azul)
-   - Derecha: Local (púrpura)
-```
-
-### Flujo de Carga de Archivo
-```
-1. Usuario selecciona archivo .owl
-   ↓
-2. POST /upload con FormData
-   ↓
-3. Backend procesa:
-   - Parsea RDF
-   - Guarda en Fuseki
-   - Indexa en Elasticsearch
-   ↓
-4. Actualizar lista de archivos
-   ↓
-5. Mostrar en sidebar
-```
-
-### Flujo de Cambio de Idioma
-```
-1. Usuario click en 🇪🇸 ES o 🇬🇧 EN
-   ↓
-2. LanguageSelector detecta pathname actual
-   ↓
-3. Reemplaza segmento de idioma en URL
-   ↓
-4. router.push() a nueva ruta
-   ↓
-5. Next.js re-renderiza con nuevo idioma
-```
-
----
-
-## 🌐 SEO y Performance
-
-### Optimizaciones Implementadas
-- **SSR**: Páginas pre-renderizadas en servidor
-- **Static Generation**: Rutas `/es` y `/en` generadas en build
-- **Code Splitting**: Diccionarios cargados dinámicamente
-- **Image Optimization**: Next.js Image component (si se usa)
-- **Font Optimization**: Fuentes optimizadas automáticamente
-
-### Metadata
-```typescript
-// app/layout.tsx
-export const metadata: Metadata = {
-  title: "Buscador Semántico de Series TV",
-  description: "Motor de búsqueda semántica...",
-};
-```
-
----
-
-## 🔒 Mejores Prácticas
-
-### Type Safety
-- Todos los componentes tipados con TypeScript
-- Interfaces para props y estados
-- Type guards para validación
-
-### Accesibilidad
-- Atributos `aria-*` en elementos interactivos
-- Contraste de colores WCAG AA
-- Navegación por teclado
-
-### Performance
-- Lazy loading de componentes pesados
-- Debounce en búsquedas
-- Memoización con `useMemo` y `useCallback` (donde aplique)
-
----
-
-**Desarrollado con ❤️ usando Next.js 15 y React 19.**
 ## 📱 Progressive Web App (PWA)
 
-### Características PWA
+### Configuración (`next.config.js`)
 
-La aplicación es una **PWA completa** con las siguientes capacidades:
-
-#### 1. **Instalabilidad**
-- Se puede instalar como aplicación nativa en desktop y móvil
-- Ícono personalizado de Synapse Search
-- Funciona como app independiente del navegador
-
-#### 2. **Modo Offline**
-- Service Worker cachea recursos automáticamente
-- Páginas visitadas disponibles sin conexión
-- Banner de estado offline visible
-- Página fallback personalizada
-
-#### 3. **Almacenamiento Local (IndexedDB)**
-Tres stores de datos:
-- `searches`: Caché de búsquedas realizadas
-- `files`: Lista de archivos subidos
-- `pendingUploads`: Uploads pendientes cuando offline
-
-#### 4. **Componentes PWA**
-
-**OfflineBanner** (`src/components/OfflineBanner.tsx`):
-- Banner naranja/rojo que aparece cuando se pierde conexión
-- Desaparece automáticamente al reconectar
-
-**InstallPrompt** (`src/components/InstallPrompt.tsx`):
-- Prompt elegante para instalar la app
-- Aparece automáticamente cuando la app es instalable
-- Diseño moderno con gradiente púrpura/rosa
-
-**useOnlineStatus** (`src/hooks/useOnlineStatus.ts`):
-- Hook React para detectar estado de conexión
-- Actualización en tiempo real
-
-### Configuración PWA
-
-**next.config.js**:
 ```javascript
-const withPWA = require("next-pwa")({
-  dest: "public",
-  register: true,
-  skipWaiting: true,
-  disable: process.env.NODE_ENV === "development",
-  runtimeCaching: [...]
+const withPWA = require('next-pwa')({
+  dest: 'public',           // Dónde generar los workers
+  register: true,           // Auto-registrar Service Worker
+  skipWaiting: true,        // Actualizar worker inmediatamente
+  disable: process.env.NODE_ENV === 'development', // Desactivar en dev
+  runtimeCaching: [
+    {
+      urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'google-fonts',
+        expiration: {
+          maxEntries: 4,
+          maxAgeSeconds: 365 * 24 * 60 * 60 // 1 año
+        }
+      }
+    },
+    {
+      urlPattern: /^http:\/\/localhost:3001\/api\/.*/i,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'api-cache',
+        networkTimeoutSeconds: 10,
+        expiration: {
+          maxEntries: 50,
+          maxAgeSeconds: 5 * 60 // 5 minutos
+        }
+      }
+    }
+  ]
+});
+
+module.exports = withPWA({
+  reactStrictMode: true,
+  // ... otras configuraciones
 });
 ```
 
-**Estrategias de caché**:
-| Recurso | Estrategia | Duración |
-|---------|------------|----------|
-| Imágenes | CacheFirst | 60 días |
-| CSS/JS | StaleWhileRevalidate | 24 horas |
-| Páginas | NetworkFirst | 24 horas |
-| API externa | NetworkFirst | 1 hora |
+### Manifest (`public/manifest.json`)
 
-### Instalación
-
-**Desktop (Chrome/Edge)**:
-1. Visita la app
-2. Click en ícono de instalación en barra de direcciones
-3. O espera el popup `InstallPrompt`
-
-**Mobile (Android/iOS)**:
-1. Abre en Chrome/Safari
-2. Menú → "Agregar a pantalla de inicio"
-
-### Verificación PWA
-
-```bash
-# Build de producción (PWA deshabilitado en dev)
-npm run build
-npm start
-
-# Abrir DevTools → Application
-# - Service Workers: Verificar "activated and running"
-# - Manifest: Verificar sin errores
-# - Cache Storage: Ver recursos cacheados
+```json
+{
+  "name": "Synapse Search - Buscador Semántico",
+  "short_name": "Synapse",
+  "description": "Motor de búsqueda semántica para series de TV",
+  "start_url": "/es/search",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
 ```
 
-**Lighthouse Audit**:
-1. DevTools → Lighthouse
-2. Seleccionar "Progressive Web App"
-3. Run audit
-4. Objetivo: Score > 90
+### Estrategias de Caché
+
+| Estrategia | Uso | Comportamiento |
+|------------|-----|----------------|
+| **CacheFirst** | Fuentes, imágenes estáticas | Sirve de caché, actualiza en background |
+| **NetworkFirst** | API calls | Intenta red primero, fallback a caché |
+| **StaleWhileRevalidate** | Páginas HTML | Sirve caché, actualiza en background |
 
 ---
+
+## 🧩 Patrones de Diseño
+
+### 1. Estado en la URL (Single Source of Truth)
+
+En lugar de usar Redux o Zustand, el estado principal vive en la URL:
+
+```typescript
+// app/[lang]/search/page.tsx
+export default function SearchPage({ searchParams }: { searchParams: { q?: string } }) {
+  const query = searchParams.q || '';
+  
+  return <SearchResults query={query} />;
+}
+```
+
+**Ventajas:**
+- ✅ URLs compartibles
+- ✅ Funciona con el botón "Atrás" del navegador
+- ✅ Estado persiste al recargar
+
+### 2. Composición de Componentes
+
+Preferimos composición sobre herencia:
+
+```typescript
+// ❌ Malo: Herencia
+class SearchCard extends Card { ... }
+
+// ✅ Bueno: Composición
+<Card>
+  <SearchResult data={result} />
+</Card>
+```
+
+### 3. Custom Hooks para Lógica Reutilizable
+
+```typescript
+// lib/hooks/useDebounce.ts
+export function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
+
+// Uso en SearchBar
+const debouncedQuery = useDebounce(query, 500);
+```
+
+---
+
+## ⚡ Optimizaciones
+
+### 1. Optimización de Imágenes
+
+Next.js optimiza imágenes automáticamente:
+
+```typescript
+import Image from 'next/image';
+
+<Image 
+  src={result.image} 
+  alt={result.title}
+  width={300}
+  height={200}
+  loading="lazy"  // Lazy loading automático
+/>
+```
+
+**Beneficios:**
+- Conversión automática a WebP
+- Responsive images
+- Lazy loading
+- Placeholder blur
+
+### 2. Code Splitting Automático
+
+Next.js hace code splitting por ruta automáticamente:
+
+```
+/es/search → search.chunk.js
+/en/search → search.chunk.js (compartido)
+```
+
+### 3. Prefetching de Links
+
+```typescript
+import Link from 'next/link';
+
+// Next.js prefetchea automáticamente en viewport
+<Link href="/es/search" prefetch={true}>
+  Buscar
+</Link>
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Error: `Hydration failed`
+**Causa:** HTML del servidor difiere del cliente.
+
+**Solución:**
+```typescript
+// ❌ Malo: Renderiza Date en servidor y cliente
+<div>{new Date().toString()}</div>
+
+// ✅ Bueno: Solo en cliente
+'use client';
+export function Clock() {
+  const [time, setTime] = useState<string>('');
+  
+  useEffect(() => {
+    setTime(new Date().toString());
+  }, []);
+  
+  return <div>{time}</div>;
+}
+```
+
+### Error: `Module not found: Can't resolve '@/components/...'`
+**Causa:** Alias de TypeScript no configurado.
+
+**Solución:** Verificar `tsconfig.json`:
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
+```
+
+### Los estilos de Tailwind no aplican
+**Causa:** Archivo fuera de `content` en `tailwind.config.ts`.
+
+**Solución:**
+```typescript
+// tailwind.config.ts
+export default {
+  content: [
+    './src/**/*.{js,ts,jsx,tsx,mdx}',  // Asegúrate de incluir todas las rutas
+  ],
+  // ...
+}
+```
+
+### PWA no se instala
+**Causa:** PWA está deshabilitado en desarrollo.
+
+**Solución:**
+```bash
+npm run build
+npm run start
+```
+
+### Error: `Failed to fetch` en búsqueda
+**Causa:** Backend no está corriendo o CORS mal configurado.
+
+**Solución:**
+```bash
+# Verificar backend
+curl http://localhost:3001/health
+
+# Verificar CORS en backend (NestJS)
+// main.ts
+app.enableCors({
+  origin: 'http://localhost:3000',
+  credentials: true,
+});
+```
+
+---
+
+## 📚 Recursos Adicionales
+
+- [Next.js 16 Documentation](https://nextjs.org/docs)
+- [React 19 Documentation](https://react.dev/)
+- [TailwindCSS Documentation](https://tailwindcss.com/docs)
+- [PWA Documentation](https://web.dev/progressive-web-apps/)
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/)

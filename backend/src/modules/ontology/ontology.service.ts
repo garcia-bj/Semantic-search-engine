@@ -104,13 +104,16 @@ export class OntologyService {
 
       this.logger.log(`Parsing file: ${file.filename}, Content start: ${fileContent.substring(0, 200)}`);
 
+      // Pre-procesar contenido para evitar errores de entidades XML no definidas
+      const processedContent = this.preprocessRdfContent(fileContent);
+
       const store = $rdf.graph();
       const contentType = "application/rdf+xml";
       const baseUrl = `http://localhost/uploads/${file.filename}`;
 
       const document = await new Promise((resolve, reject) => {
         try {
-          $rdf.parse(fileContent, store, baseUrl, contentType, async (err) => {
+          $rdf.parse(processedContent, store, baseUrl, contentType, async (err) => {
             if (err) {
               reject(new Error(`Failed to parse RDF: ${err}`));
               return;
@@ -128,7 +131,7 @@ export class OntologyService {
                 file.originalname,
                 file.path, // Guardamos la ruta original
                 triples,
-                fileContent,
+                processedContent,
               );
               resolve(doc);
             } catch (error) {
@@ -160,6 +163,17 @@ export class OntologyService {
     }
   }
 
+  /**
+   * Reemplaza entidades XML comunes que pueden causar errores si falta el DTD
+   */
+  private preprocessRdfContent(content: string): string {
+    return content
+      .replace(/&xsd;/g, 'http://www.w3.org/2001/XMLSchema#')
+      .replace(/&rdf;/g, 'http://www.w3.org/1999/02/22-rdf-syntax-ns#')
+      .replace(/&rdfs;/g, 'http://www.w3.org/2000/01/rdf-schema#')
+      .replace(/&owl;/g, 'http://www.w3.org/2002/07/owl#');
+  }
+
   private async saveDocument(
     filename: string,
     filePath: string,
@@ -180,52 +194,43 @@ export class OntologyService {
         `Document metadata saved: ${document.id} with ${triples.length} triples at ${filePath}`,
       );
 
-      // 2. Inyectar documentId en el contenido RDF
-      // Agregar triples adicionales que vinculan cada sujeto con el documentId
-      const documentIdPredicate = 'http://example.org/hasDocumentId';
-
-      // Extraer todos los sujetos únicos
-      const uniqueSubjects = [...new Set(triples.map(t => t.subject))];
-
-      // Crear triples adicionales para documentId
-      const documentIdTriples = uniqueSubjects.map(subject => {
-        // Escapar el subject para RDF/XML
-        const escapedSubject = subject.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        return `  <rdf:Description rdf:about="${escapedSubject}">
-    <hasDocumentId xmlns="http://example.org/">${document.id}</hasDocumentId>
-  </rdf:Description>`;
-      }).join('\n');
-
-      // Inyectar los triples de documentId en el RDF
-      let enrichedRdfContent = rdfContent;
-
-      // Buscar la etiqueta de cierre </rdf:RDF> e insertar antes de ella
-      if (enrichedRdfContent.includes('</rdf:RDF>')) {
-        enrichedRdfContent = enrichedRdfContent.replace(
-          '</rdf:RDF>',
-          `${documentIdTriples}\n</rdf:RDF>`
-        );
-      } else {
-        // Si no tiene la estructura esperada, envolver el contenido
-        enrichedRdfContent = `<?xml version="1.0" encoding="UTF-8"?>
-<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-${documentIdTriples}
-${rdfContent}
-</rdf:RDF>`;
+      // 2. Subir contenido RDF crudo a Fuseki primero (menos propenso a errores de parsing)
+      try {
+        await this.sparqlService.uploadRdf(rdfContent, "application/rdf+xml");
+        this.logger.log(`Raw RDF uploaded to Fuseki for document ${document.id}`);
+      } catch (fusekiError) {
+        // Fallo en la subida inicial: eliminar de Postgres
+        await this.prisma.document.delete({ where: { id: document.id } });
+        throw new Error(`Failed to upload RDF to Fuseki: ${fusekiError.message}`);
       }
 
-      this.logger.log(`Injected documentId metadata for ${uniqueSubjects.length} unique subjects`);
-
-      // 3. Guardar tripletas enriquecidas en Fuseki
+      // 3. Inyectar metadatos (documentId) usando SPARQL INSERT, no manipulación de strings XML
       try {
-        await this.sparqlService.uploadRdf(enrichedRdfContent, "application/rdf+xml");
-        this.logger.log(`Triples with documentId uploaded to Fuseki for document ${document.id}`);
-      } catch (fusekiError) {
-        // Si falla Fuseki, eliminar el documento de PostgreSQL
-        await this.prisma.document.delete({ where: { id: document.id } });
-        throw new Error(
-          `Failed to upload triples to Fuseki: ${fusekiError.message}`,
-        );
+        const uniqueSubjects = [...new Set(triples.map(t => t.subject))];
+
+        // Crear lista de triplets para metadata
+        // <subject> <http://example.org/hasDocumentId> "documentId" .
+        const metadataTriples = uniqueSubjects.map(subject => ({
+          subject: subject,
+          predicate: 'http://example.org/hasDocumentId',
+          object: document.id,
+          language: null
+        }));
+
+        // Insertar en lotes de 100 para no saturar
+        const batchSize = 100;
+        for (let i = 0; i < metadataTriples.length; i += batchSize) {
+          const batch = metadataTriples.slice(i, i + batchSize);
+          await this.sparqlService.insertTriples(batch);
+        }
+
+        this.logger.log(`Injected documentId metadata for ${uniqueSubjects.length} unique subjects`);
+
+      } catch (metadataError) {
+        this.logger.error(`Failed to inject metadata: ${metadataError.message}`);
+        // Rollback: Fallo al insertar metadatos, limpiar todo
+        await this.deleteDocument(document.id);
+        throw new Error(`Failed to inject document metadata: ${metadataError.message}`);
       }
 
       // 3. Generar embeddings e indexar en Elasticsearch (si está disponible)
@@ -311,12 +316,31 @@ ${rdfContent}
 
   async deleteDocument(id: string) {
     try {
-      // TODO: Implementar eliminación de tripletas en Fuseki
-      // Por ahora solo eliminamos los metadatos
+      // 1. Eliminar tripletas de Fuseki
+      try {
+        await this.sparqlService.deleteTriplesByDocumentId(id);
+        this.logger.log(`Triples for document ${id} deleted from Fuseki`);
+      } catch (fusekiError) {
+        this.logger.error(`Failed to delete triples from Fuseki: ${fusekiError.message}`);
+        // No lanzamos error aquí para permitir que se elimine de Postgres aunque falle Fuseki
+        // (Mejor tener "basura" en Fuseki que un estado inconsistente bloqueante)
+      }
+
+      // 2. Eliminar metadatos de PostgreSQL
       await this.prisma.document.delete({
         where: { id },
       });
       this.logger.log(`Document ${id} deleted from PostgreSQL`);
+
+      // 3. Eliminar de Elasticsearch si es necesario
+      if (this.embeddingsService.isAvailable()) {
+        try {
+          await this.elasticsearchService.deleteDocumentTriples(id);
+        } catch (esError) {
+          this.logger.warn(`Failed to delete from Elasticsearch: ${esError.message}`);
+        }
+      }
+
     } catch (error) {
       throw new Error(`Failed to delete document: ${error.message}`);
     }

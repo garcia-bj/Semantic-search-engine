@@ -97,6 +97,25 @@ export class SparqlService {
     }
 
     /**
+     * Elimina todas las tripletas asociadas a un documento
+     */
+    async deleteTriplesByDocumentId(documentId: string): Promise<void> {
+        // Borrar todas las tripletas donde el sujeto tenga el hasDocumentId correspondiente
+        const sparqlUpdate = `
+      DELETE {
+        ?s ?p ?o .
+      }
+      WHERE {
+        ?s <http://example.org/hasDocumentId> "${documentId}" .
+        ?s ?p ?o .
+      }
+    `;
+
+        this.logger.log(`Deleting triples for document ${documentId}`);
+        await this.update(sparqlUpdate);
+    }
+
+    /**
      * Sube datos RDF directamente a Fuseki
      */
     async uploadRdf(rdfContent: string, contentType: string = 'application/rdf+xml'): Promise<void> {

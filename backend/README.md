@@ -1,541 +1,618 @@
-# 🔧 Backend - Arquitectura y Documentación Técnica
+# 🧠 Backend - NestJS API Gateway & Semantic Core
 
-## 📋 Índice
-- [Descripción General](#descripción-general)
-- [Arquitectura](#arquitectura)
-- [Infraestructura (Docker Compose)](#infraestructura-docker-compose)
-- [Estructura de Directorios](#estructura-de-directorios)
-- [Módulos Principales](#módulos-principales)
-- [Flujo de Datos](#flujo-de-datos)
-- [Comandos y Scripts](#comandos-y-scripts)
+> **Documentación Técnica Completa del Backend**
+
+Este es el núcleo de Synapse Search. Una aplicación **NestJS** modular que orquesta la lógica de búsqueda semántica, gestión de ontologías RDF/OWL e integración con servicios externos (DBpedia, Elasticsearch, Python ML).
 
 ---
 
-## 📖 Descripción General
+## 📑 Tabla de Contenidos
 
-El backend es una aplicación **NestJS** que actúa como el cerebro del sistema de búsqueda semántica. Coordina múltiples servicios (PostgreSQL, Fuseki, Elasticsearch) y proporciona una API RESTful para el frontend.
-
-**Responsabilidades principales:**
-- Procesamiento y almacenamiento de archivos OWL/RDF
-- Ejecución de consultas SPARQL contra Apache Fuseki
-- Indexación y búsqueda en Elasticsearch
-- Integración con DBpedia para enriquecimiento de datos
-- Conversión automática de formatos de ontologías
+- [Arquitectura del Backend](#️-arquitectura-del-backend)
+- [Stack Tecnológico](#️-stack-tecnológico)
+- [Estructura de Módulos](#-estructura-de-módulos-nestjs)
+- [Instalación y Configuración](#-instalación-y-configuración)
+- [Variables de Entorno](#-variables-de-entorno)
+- [API Reference](#-api-reference)
+- [Servicio de Embeddings (Python)](#-servicio-de-embeddings-python)
+- [Scripts Utilitarios](#-scripts-utilitarios)
+- [Flujos Clave del Sistema](#-flujos-clave-del-sistema)
+- [Troubleshooting](#-troubleshooting-técnico)
 
 ---
 
-## 🏗️ Arquitectura
+## 🏗️ Arquitectura del Backend
+
+El backend implementa una **Arquitectura Hexagonal simplificada** con **Domain-Driven Design (DDD)**, separando la lógica de negocio de la infraestructura.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    FRONTEND (Next.js)                    │
-└────────────────────┬────────────────────────────────────┘
-                     │ HTTP/REST API
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│                  BACKEND (NestJS)                        │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  API Layer (Controllers)                         │   │
-│  │  - OntologyController: Upload OWL/RDF            │   │
-│  │  - SearchController: Búsquedas semánticas        │   │
-│  │  - DbpediaController: Integración externa        │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Business Logic (Services)                       │   │
-│  │  - OntologyService: Procesamiento RDF            │   │
-│  │  - SearchService: Orquestación de búsquedas      │   │
-│  │  - SparqlService: Generación de queries         │   │
-│  │  - ElasticsearchService: Indexación             │   │
-│  └──────────────────────────────────────────────────┘   │
-└───┬─────────┬──────────────┬──────────────────────────┘
-    │         │              │
-    ▼         ▼              ▼
-┌─────────┐ ┌──────────┐ ┌──────────────┐
-│PostgreSQL│ │  Fuseki  │ │Elasticsearch │
-│(Metadata)│ │(Triples) │ │(Full-text)   │
-└─────────┘ └──────────┘ └──────────────┘
+│                    NestJS API Gateway                   │
+│                  (Puerto 3001 - REST)                   │
+└────────┬──────────┬──────────┬──────────┬──────────────┘
+         │          │          │          │
+    ┌────▼────┐ ┌──▼────┐ ┌───▼────┐ ┌───▼────┐
+    │Ontology │ │Search │ │DBpedia │ │Embeddings│
+    │ Module  │ │Module │ │ Cache  │ │ Module  │
+    └────┬────┘ └──┬────┘ └───┬────┘ └───┬────┘
+         │         │          │          │
+    ┌────▼────┐ ┌──▼────┐ ┌───▼────┐ ┌───▼────┐
+    │ SPARQL  │ │Elastic│ │Offline │ │Python  │
+    │ Service │ │Search │ │15K DB  │ │Flask   │
+    └────┬────┘ └──┬────┘ └────────┘ └────────┘
+         │         │
+    ┌────▼────┐ ┌──▼────┐
+    │ Fuseki  │ │Elastic│
+    │  :3030  │ │ :9200 │
+    └─────────┘ └───────┘
 ```
+
+### Patrón de Persistencia Políglota
+
+Utilizamos **3 bases de datos diferentes** para aprovechar las fortalezas de cada una:
+
+| Base de Datos | Tipo | Uso | Por qué |
+|---------------|------|-----|---------|
+| **PostgreSQL** | Relacional | Metadatos de archivos, usuarios | Integridad referencial (ACID) |
+| **Apache Jena Fuseki** | Grafo (RDF) | Tripletas semánticas | Consultas inferenciales SPARQL |
+| **Elasticsearch** | Documento/Búsqueda | Índice invertido | Búsqueda full-text ultra-rápida |
 
 ---
 
-## 🐳 Infraestructura (Docker Compose)
+## 🛠️ Stack Tecnológico
 
-El archivo `docker-compose.yml` define la infraestructura de servicios externos necesarios para el backend.
+### Core Framework
 
-### Servicios Definidos
+| Tecnología | Versión | Propósito |
+|------------|---------|-----------|
+| **NestJS** | ^10.3.0 | Framework principal (Express bajo el capó) |
+| **TypeScript** | ^5.3.3 | Tipado estático y decoradores |
+| **Node.js** | 18+ | Runtime JavaScript |
 
-#### 1. **Elasticsearch** (`semantic-search-es`)
-```yaml
-image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
-ports: 9200:9200
-```
+### ORMs y Clientes de BD
 
-**Propósito**: Motor de búsqueda de texto completo de alto rendimiento.
+| Librería | Versión | Base de Datos |
+|----------|---------|---------------|
+| **Prisma** | ^5.8.0 | PostgreSQL (ORM moderno) |
+| **@elastic/elasticsearch** | ^8.12.0 | Elasticsearch (Cliente oficial) |
+| **axios** | ^1.6.5 | Fuseki (HTTP client para SPARQL) |
 
-**Configuración clave**:
-- `discovery.type=single-node`: Modo de nodo único (desarrollo)
-- `xpack.security.enabled=false`: Seguridad deshabilitada (solo desarrollo)
-- `ES_JAVA_OPTS=-Xms512m -Xmx512m`: Límite de memoria JVM
+### Procesamiento Semántico
 
-**Volumen persistente**: `es_data` → `/usr/share/elasticsearch/data`
+| Librería | Versión | Uso |
+|----------|---------|-----|
+| **rdflib** | ^2.3.0 | Parsing RDF/XML, Turtle, N-Triples |
+| **n3** | ^1.17.2 | Parser RDF alternativo (más rápido) |
+| **natural** | ^6.10.0 | NLP: tokenización, stemming |
+| **compromise** | ^14.10.0 | NLP: análisis sintáctico |
 
-**Uso en el backend**:
-- Indexación automática de tripletas RDF para búsqueda rápida
-- Búsqueda de texto completo con ranking BM25
-- Autocompletado de términos
+### Servicios Externos
 
----
+| Librería | Versión | Servicio |
+|----------|---------|----------|
+| **@google-cloud/translate** | ^9.3.0 | Google Translate API |
+| **@nestjs/axios** | ^3.0.1 | HTTP requests a DBpedia |
 
-#### 2. **Apache Fuseki** (`semantic-search-fuseki`)
-```yaml
-image: stain/jena-fuseki
-ports: 3030:3030
-```
+### Validación y Transformación
 
-**Propósito**: Triple store nativo para almacenar y consultar datos RDF mediante SPARQL.
-
-**Configuración clave**:
-- `ADMIN_PASSWORD=admin123`: Contraseña del administrador
-- Dataset: `/semantic-search` (debe crearse manualmente en primera ejecución)
-
-**Volumen persistente**: `fuseki_data` → `/fuseki`
-
-**Uso en el backend**:
-- Almacenamiento de todas las tripletas extraídas de archivos OWL/RDF
-- Ejecución de consultas SPARQL complejas
-- Razonamiento semántico sobre ontologías
-
-**⚠️ Configuración inicial requerida**:
-1. Acceder a `http://localhost:3030`
-2. Login: `admin` / `admin123`
-3. Crear dataset `semantic-search` (tipo: Persistent TDB2)
+| Librería | Versión | Uso |
+|----------|---------|-----|
+| **class-validator** | ^0.14.0 | Validación de DTOs |
+| **class-transformer** | ^0.5.1 | Serialización/Deserialización |
 
 ---
 
-#### 3. **Red Docker** (`semantic-net`)
-Red bridge personalizada para comunicación entre contenedores.
+## 📦 Estructura de Módulos (NestJS)
+
+El backend está organizado en **módulos desacoplados** siguiendo el principio de **Single Responsibility**.
+
+### Módulos Principales (`src/modules/`)
+
+#### 1. 🗂️ **OntologyModule**
+**Responsabilidad:** Gestión completa del ciclo de vida de archivos OWL/RDF.
+
+**Servicios:**
+- `OntologyService`: Lógica de negocio
+- `OntologyController`: Endpoints REST
+
+**Funcionalidades Clave:**
+- ✅ **Upload Atómico**: Si falla Fuseki, hace rollback en Postgres
+- ✅ **Preprocesamiento XML**: Expande entidades (`&xsd;`, `&rdf;`) antes de parsear
+- ✅ **Conversión OWL/XML**: Usa Python `owlready2` para convertir formatos incompatibles
+- ✅ **Inyección de Metadata**: Añade tripletas `hasDocumentId` vía SPARQL INSERT
+
+**Flujo de Upload:**
+```
+1. Recibir archivo → 2. Validar formato → 3. Convertir (si es OWL/XML)
+→ 4. Parsear RDF → 5. Guardar metadata (Postgres) → 6. Subir RDF (Fuseki)
+→ 7. Insertar metadata triples (SPARQL) → 8. Indexar (Elasticsearch)
+```
+
+#### 2. 🕸️ **SparqlModule**
+**Responsabilidad:** Comunicación con Apache Jena Fuseki.
+
+**Servicios:**
+- `SparqlService`: Wrapper de SPARQL
+
+**Métodos Principales:**
+```typescript
+query(sparql: string): Promise<any[]>           // SELECT queries
+update(sparql: string): Promise<void>           // INSERT/DELETE
+uploadRdf(content: string, format: string)      // Subir RDF crudo
+insertTriples(triples: Triple[])                // INSERT DATA batch
+deleteTriplesByDocumentId(docId: string)        // DELETE WHERE
+```
+
+**Seguridad:**
+- Autenticación Basic Auth (`admin:admin123` por defecto)
+- Sanitización de inputs para prevenir SPARQL injection
+
+#### 3. 🔎 **SearchModule**
+**Responsabilidad:** Orquestador de búsqueda híbrida.
+
+**Servicios:**
+- `SearchService`: Coordina búsqueda en múltiples fuentes
+- `SearchController`: Endpoint `/search`
+
+**Estrategia de Búsqueda:**
+1. **Búsqueda Local (Elasticsearch):** Índice de archivos subidos
+2. **Búsqueda Semántica (Python):** Si está activo, re-ranking por similitud vectorial
+3. **Fusión de Resultados:** Deduplicación y ordenamiento por score
+
+#### 4. 💾 **DbpediaCacheModule**
+**Responsabilidad:** Resiliencia y fallback offline.
+
+**Servicios:**
+- `DbpediaCacheService`: Implementa Circuit Breaker pattern
+
+**Características:**
+- ✅ **Base Offline:** 15,000 series en JSON (5,000 por idioma)
+- ✅ **Índice Invertido en RAM:** Búsqueda <10ms
+- ✅ **Timeout Configurable:** 5 segundos para DBpedia
+- ✅ **Fallback Automático:** Si DBpedia falla, usa offline
+- ✅ **Caché de Resultados:** Guarda respuestas de DBpedia en memoria
+
+**Flujo de Búsqueda:**
+```
+Query → DBpedia (5s timeout) → Success? → Return
+                             ↓ Fail
+                          Offline DB → Return
+```
+
+#### 5. 🤖 **EmbeddingsModule**
+**Responsabilidad:** Puente con el servicio Python de ML.
+
+**Servicios:**
+- `EmbeddingsService`: Cliente HTTP hacia Flask
+
+**Métodos:**
+```typescript
+isAvailable(): boolean                          // Health check
+generateEmbedding(text: string): Promise<number[]>  // Vectorizar texto
+```
+
+**Degradación Graceful:**
+Si el servicio Python no está disponible, el sistema funciona en "modo degradado" (solo búsqueda léxica).
 
 ---
 
-## 📂 Estructura de Directorios
+## 🚀 Instalación y Configuración
 
-```
-backend/
-├── src/
-│   ├── modules/           # Módulos funcionales de NestJS
-│   │   ├── database/      # Prisma ORM (PostgreSQL)
-│   │   ├── dbpedia/       # Integración con DBpedia
-│   │   ├── elasticsearch/ # Cliente de Elasticsearch
-│   │   ├── ontology/      # Procesamiento de OWL/RDF
-│   │   ├── search/        # Lógica de búsqueda
-│   │   └── sparql/        # Generación de queries SPARQL
-│   ├── config/            # Configuraciones de servicios
-│   ├── i18n/              # Traducciones (es/en)
-│   ├── app.module.ts      # Módulo raíz de NestJS
-│   └── main.ts            # Punto de entrada
-├── prisma/
-│   └── schema.prisma      # Esquema de base de datos
-├── scripts/
-│   └── convert_owl.py     # Conversión de ontologías (Python)
-├── uploads/               # Archivos OWL/RDF subidos
-├── docker-compose.yml     # Definición de infraestructura
-├── .env                   # Variables de entorno
-└── package.json           # Dependencias Node.js
-```
-
----
-
-## 🧩 Módulos Principales
-
-### 1. **`modules/database/`** - Prisma ORM
-**Archivos**:
-- `prisma.module.ts`: Módulo NestJS
-- `prisma.service.ts`: Servicio singleton de Prisma Client
-
-**Responsabilidad**:
-- Conexión a PostgreSQL
-- Gestión de transacciones
-- Acceso a modelos de datos (`Document`)
-
-**Modelo de datos** (`prisma/schema.prisma`):
-```prisma
-model Document {
-  id          String   @id @default(uuid())
-  filename    String
-  filePath    String?   // Ruta del archivo en uploads/
-  tripleCount Int      @default(0)
-  createdAt   DateTime @default(now())
-}
-```
-
----
-
-### 2. **`modules/ontology/`** - Procesamiento de Ontologías
-**Archivos**:
-- `ontology.controller.ts`: Endpoints de carga/eliminación
-- `ontology.service.ts`: Lógica de procesamiento
-- `ontology.module.ts`: Configuración del módulo
-
-**Flujo de procesamiento**:
-1. **Recepción**: Multer guarda archivo en `uploads/`
-2. **Detección de formato**: Verifica si es OWL/XML o RDF/XML
-3. **Conversión** (si es necesario):
-   - Ejecuta `scripts/convert_owl.py` con Python
-   - Utiliza `owlready2` para convertir a RDF/XML
-4. **Parsing**: `rdflib.js` extrae tripletas (sujeto, predicado, objeto)
-5. **Almacenamiento**:
-   - Metadatos → PostgreSQL (vía Prisma)
-   - Tripletas → Fuseki (vía SPARQL INSERT)
-   - Índice → Elasticsearch
-
-**Endpoints**:
-- `POST /upload`: Subir archivo OWL/RDF
-- `GET /upload/documents`: Listar documentos
-- `DELETE /upload/:id`: Eliminar documento
-
----
-
-### 3. **`modules/search/`** - Motor de Búsqueda
-**Archivos**:
-- `search.controller.ts`: Endpoints de búsqueda
-- `search.service.ts`: Orquestación de búsquedas
-- `search.module.ts`: Configuración
-
-**Tipos de búsqueda implementados**:
-1. **Búsqueda simple** (`GET /search?q=term`):
-   - Busca en Fuseki (SPARQL) y Elasticsearch en paralelo
-   - Combina y rankea resultados
-
-2. **Búsqueda rápida** (`GET /search/fast?q=term`):
-   - Solo Elasticsearch (10-20x más rápido)
-
-3. **Autocompletado** (`GET /search/autocomplete?q=fu`):
-   - Sugerencias en tiempo real
-
-4. **Búsqueda por componente**:
-   - Por sujeto: `GET /search/subject?uri=...`
-   - Por predicado: `GET /search/predicate?uri=...`
-   - Por objeto: `GET /search/object?value=...`
-
-**Algoritmo de ranking**:
-- TF-IDF para relevancia textual
-- BM25 en Elasticsearch
-- Boost por coincidencia exacta
-
----
-
-### 4. **`modules/sparql/`** - Generación de Queries SPARQL
-**Archivos**:
-- `sparql.service.ts`: Generador de queries
-- `sparql.module.ts`: Configuración
-
-**Responsabilidad**:
-- Construir queries SPARQL dinámicamente según tipo de búsqueda
-- Ejecutar queries contra Fuseki
-- Parsear resultados JSON
-
-**Ejemplo de query generada**:
-```sparql
-SELECT ?subject ?predicate ?object
-WHERE {
-  ?subject ?predicate ?object .
-  FILTER(
-    CONTAINS(LCASE(STR(?subject)), "person") ||
-    CONTAINS(LCASE(STR(?object)), "person")
-  )
-}
-LIMIT 100
-```
-
----
-
-### 5. **`modules/elasticsearch/`** - Indexación
-**Archivos**:
-- `elasticsearch.service.ts`: Cliente de Elasticsearch
-- `elasticsearch.module.ts`: Configuración
-
-**Responsabilidad**:
-- Crear índice `semantic-triples` al inicio
-- Indexar tripletas automáticamente al subir archivos
-- Ejecutar búsquedas de texto completo
-
-**Estructura del índice**:
-```json
-{
-  "subject": "http://example.org/Person",
-  "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-  "object": "http://xmlns.com/foaf/0.1/Person",
-  "documentId": "uuid-123"
-}
-```
-
----
-
-### 6. **`modules/dbpedia/`** - Integración Externa
-**Archivos**:
-- `dbpedia.controller.ts`: Endpoint de búsqueda
-- `dbpedia.service.ts`: Cliente HTTP a DBpedia
-- `dbpedia.module.ts`: Configuración
-
-**Responsabilidad**:
-- Ejecutar búsquedas en DBpedia Lookup API
-- Enriquecer resultados locales con datos externos
-- Cachear respuestas (opcional)
-
-**Endpoint**:
-- `GET /dbpedia/search?q=term&lang=es`
-
----
-
-## 🔄 Flujo de Datos Completo
-
-### Carga de Archivo
-```
-Usuario → Frontend → POST /upload
-                        ↓
-                   OntologyController
-                        ↓
-                   OntologyService
-                   ├─→ Detectar formato
-                   ├─→ Convertir (Python) si es necesario
-                   ├─→ Parsear RDF (rdflib)
-                   ├─→ Guardar metadatos (Prisma → PostgreSQL)
-                   ├─→ Insertar tripletas (SPARQL → Fuseki)
-                   └─→ Indexar (Elasticsearch)
-```
-
-### Búsqueda
-```
-Usuario → Frontend → GET /search?q=term
-                        ↓
-                   SearchController
-                        ↓
-                   SearchService
-                   ├─→ SparqlService → Fuseki (SPARQL)
-                   └─→ ElasticsearchService → Elasticsearch
-                        ↓
-                   Combinar y rankear resultados
-                        ↓
-                   Retornar JSON al frontend
-```
-
----
-
-## 🚀 Comandos y Scripts
-
-### Infraestructura
-```bash
-# Iniciar servicios Docker
-docker-compose up -d
-
-# Ver logs
-docker-compose logs -f
-
-# Detener servicios
-docker-compose down
-
-# Reiniciar un servicio específico
-docker-compose restart fuseki
-```
-
-### Base de Datos
-```bash
-# Generar cliente Prisma (después de cambios en schema.prisma)
-npx prisma generate
-
-# Sincronizar esquema con PostgreSQL
-npx prisma db push
-
-# Abrir Prisma Studio (GUI)
-npx prisma studio
-```
-
-### Desarrollo
-```bash
-# Instalar dependencias
-npm install
-
-# Modo desarrollo (hot-reload)
-npm run start:dev
-
-# Build para producción
-npm run build
-
-# Ejecutar producción
-npm run start:prod
-```
-
-### Scripts Python
-```bash
-# Instalar dependencias Python
-pip install owlready2
-
-# Ejecutar conversión manual
-python scripts/convert_owl.py path/to/file.owl
-```
-
----
-
-## 🔧 Variables de Entorno (`.env`)
-
-```env
-# PostgreSQL
-DATABASE_URL="postgresql://user:password@localhost:5432/semantic_search"
-
-# Fuseki
-FUSEKI_URL="http://localhost:3030"
-FUSEKI_DATASET="semantic-search"
-FUSEKI_USERNAME="admin"
-FUSEKI_PASSWORD="admin123"
-
-# Elasticsearch
-ELASTICSEARCH_URL="http://localhost:9200"
-
-# Servidor
-PORT=3001
-```
-
----
-
-## 📦 Dependencias Clave
-
-| Paquete | Versión | Propósito |
-|---------|---------|-----------|
-| `@nestjs/core` | ^10.0.0 | Framework principal |
-| `@prisma/client` | ^5.0.0 | ORM para PostgreSQL |
-| `rdflib` | ^2.2.0 | Parser RDF/OWL |
-| `@elastic/elasticsearch` | ^8.0.0 | Cliente Elasticsearch |
-| `axios` | ^1.0.0 | HTTP client (DBpedia) |
-| `multer` | ^1.4.0 | Upload de archivos |
-
----
-
-## 🐳 Despliegue a Producción con Docker
-
-### Requisitos de Python
-
-El backend **requiere Python 3.x y la librería `owlready2`** para convertir archivos OWL/XML a RDF/XML. Con Docker, esto se maneja automáticamente.
-
-### Dockerfile Multi-Stage
-
-El proyecto incluye un [`Dockerfile`](./Dockerfile) optimizado que:
-- ✅ Instala Node.js 20 (Alpine Linux)
-- ✅ Instala Python 3 y pip
-- ✅ Instala `owlready2` automáticamente
-- ✅ Copia el script `convert_owl.py`
-- ✅ Compila TypeScript en una etapa separada
-- ✅ Genera una imagen final optimizada (~200MB)
-
-### Despliegue Rápido
-
-#### Opción 1: Docker Compose (Recomendado)
-
-Desde la raíz del proyecto:
-
-```bash
-# Linux/Mac
-chmod +x deploy.sh
-./deploy.sh
-
-# Windows
-.\deploy.ps1
-```
-
-O manualmente:
-
-```bash
-# Construir y levantar todos los servicios
-docker-compose up --build -d
-
-# Ver logs
-docker-compose logs -f backend
-
-# Verificar que Python está disponible
-docker exec semantic_backend python3 --version
-docker exec semantic_backend pip3 list | grep owlready2
-```
-
-#### Opción 2: Solo Backend
+### 1. Instalar Dependencias
 
 ```bash
 cd backend
-
-# Construir imagen
-docker build -t semantic-backend:latest .
-
-# Ejecutar contenedor
-docker run -d \
-  --name semantic_backend \
-  -p 3001:3001 \
-  -e DATABASE_URL="postgresql://user:pass@host:5432/db" \
-  -e FUSEKI_URL="http://fuseki:3030" \
-  -e ELASTICSEARCH_NODE="http://elasticsearch:9200" \
-  semantic-backend:latest
+npm install
 ```
 
-### Variables de Entorno para Producción
+### 2. Configurar Base de Datos
 
-Copia `.env.production.example` como `.env` y configura:
+```bash
+# Copiar configuración de ejemplo
+cp .env.example .env
+
+# Generar cliente Prisma
+npx prisma generate
+
+# Ejecutar migraciones
+npx prisma migrate deploy
+```
+
+### 3. Iniciar Servicios Docker
+
+```bash
+# Desde la raíz del proyecto
+docker-compose up -d postgres fuseki elasticsearch
+```
+
+### 4. Iniciar Backend
+
+```bash
+# Modo desarrollo (hot-reload)
+npm run start:dev
+
+# Modo producción
+npm run build
+npm run start:prod
+```
+
+---
+
+## 🔐 Variables de Entorno
+
+Crea un archivo `.env` en la raíz de `backend/`:
 
 ```env
-NODE_ENV=production
-PORT=3001
-DATABASE_URL=postgresql://semantic_user:semantic_password@postgres:5432/semantic_search
-FUSEKI_URL=http://fuseki:3030
+# ========================================
+# BASE DE DATOS PRINCIPAL (PostgreSQL)
+# ========================================
+DATABASE_URL="postgresql://postgres:postgres123@localhost:5432/semantic_search?schema=public"
+
+# ========================================
+# FUSEKI (Servidor SPARQL)
+# ========================================
+FUSEKI_URL=http://localhost:3030
 FUSEKI_DATASET=semantic
-ELASTICSEARCH_NODE=http://elasticsearch:9200
+FUSEKI_USERNAME=admin
+FUSEKI_PASSWORD=admin123
+
+# ========================================
+# ELASTICSEARCH
+# ========================================
+ELASTICSEARCH_NODE=http://localhost:9200
+# ELASTICSEARCH_USERNAME=elastic  # Si tienes auth habilitado
+# ELASTICSEARCH_PASSWORD=changeme
+
+# ========================================
+# SERVICIO DE EMBEDDINGS (Python)
+# ========================================
+PYTHON_SERVICE_URL=http://localhost:5000
+
+# ========================================
+# SERVIDOR
+# ========================================
+PORT=3001
+NODE_ENV=development
+
+# ========================================
+# GOOGLE TRANSLATE (Opcional)
+# ========================================
+# GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
 ```
 
-### Plataformas de Hosting
+### Descripción de Variables Críticas
 
-#### Railway
-```bash
-railway login
-railway init
-railway up
+| Variable | Descripción | Valor por Defecto |
+|----------|-------------|-------------------|
+| `DATABASE_URL` | String de conexión Postgres (Prisma) | `postgresql://postgres:postgres123@localhost:5432/semantic_search` |
+| `FUSEKI_URL` | URL base del servidor Fuseki | `http://localhost:3030` |
+| `FUSEKI_DATASET` | Nombre del dataset TDB2 en Fuseki | `semantic` |
+| `FUSEKI_USERNAME` | Usuario admin de Fuseki | `admin` |
+| `FUSEKI_PASSWORD` | Contraseña de Fuseki | `admin123` |
+| `ELASTICSEARCH_NODE` | URL del nodo Elasticsearch | `http://localhost:9200` |
+| `PYTHON_SERVICE_URL` | URL del servicio Flask de embeddings | `http://localhost:5000` |
+
+---
+
+## 📡 API Reference
+
+### 🔍 Búsqueda
+
+#### `GET /search`
+Búsqueda en la base de conocimiento local (archivos subidos).
+
+**Query Parameters:**
+```typescript
+{
+  query: string;      // Término de búsqueda (requerido)
+  language?: string;  // Código ISO: 'es' | 'en' | 'pt' (default: 'es')
+  semantic?: boolean; // Forzar búsqueda vectorial (default: auto)
+}
 ```
 
-#### Render
-- Conectar repositorio de GitHub
-- Seleccionar "Docker" como tipo de servicio
-- Render detectará el Dockerfile automáticamente
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "doc-uuid-123",
+    "title": "Breaking Bad",
+    "abstract": "Un profesor de química...",
+    "source": "local",
+    "score": 0.95,
+    "metadata": {
+      "genre": "Drama",
+      "network": "AMC"
+    }
+  }
+]
+```
 
-#### AWS ECS / Azure Container Instances
-1. Construir imagen localmente
-2. Subir a ECR/ACR
-3. Crear servicio con la imagen
+#### `GET /dbpedia-cache/search`
+Búsqueda federada en DBpedia + Fallback offline.
 
-### Verificación Post-Despliegue
+**Query Parameters:**
+```typescript
+{
+  q: string;     // Término de búsqueda (requerido)
+  lang: string;  // 'es' | 'en' | 'pt' (requerido)
+}
+```
 
-```bash
-# Health check
-curl http://localhost:3001/health
+**Response (200 OK):**
+```json
+{
+  "results": [...],
+  "source": "online" | "cache" | "offline",
+  "count": 42
+}
+```
 
-# Verificar Python
-docker exec semantic_backend python3 --version
+### 📤 Gestión de Ontologías
 
-# Verificar owlready2
-docker exec semantic_backend pip3 show owlready2
+#### `POST /ontology/upload`
+Sube un archivo OWL/RDF.
 
-# Probar conversión
-curl -X POST http://localhost:3001/ontology/upload \
-  -F "file=@test.owl"
+**Request:**
+```http
+POST /ontology/upload
+Content-Type: multipart/form-data
+
+file: [binary data]
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": "doc-uuid-456",
+  "filename": "tv_series.owl",
+  "tripleCount": 1523,
+  "uploadedAt": "2025-12-10T00:00:00Z"
+}
+```
+
+#### `GET /ontology/documents`
+Lista todos los documentos subidos.
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "doc-uuid-456",
+    "filename": "tv_series.owl",
+    "tripleCount": 1523,
+    "createdAt": "2025-12-10T00:00:00Z"
+  }
+]
+```
+
+#### `DELETE /ontology/:id`
+Elimina un documento y todas sus tripletas.
+
+**Response (200 OK):**
+```json
+{
+  "message": "Document deleted successfully"
+}
 ```
 
 ---
 
-## 🛡️ Seguridad y Producción
+## 🐍 Servicio de Embeddings (Python)
 
-**Para producción, asegúrate de**:
-- Cambiar contraseñas por defecto (Fuseki, PostgreSQL)
-- Habilitar autenticación en Elasticsearch
-- Configurar CORS adecuadamente
-- Usar HTTPS
-- Implementar rate limiting
-- Validar y sanitizar inputs
-- **Verificar que Python y owlready2 están instalados correctamente**
+### ¿Qué hace?
 
+Convierte texto a vectores matemáticos de 384 dimensiones usando el modelo `paraphrase-multilingual-MiniLM-L12-v2`.
+
+### Instalación
+
+```bash
+# Instalar dependencias
+pip install -r requirements-embeddings.txt
+
+# Ejecutar servicio
+python src/modules/embeddings/embedding-service.py
+```
+
+### Endpoints del Servicio Python
+
+#### `GET /health`
+```json
+{
+  "status": "healthy",
+  "model": "paraphrase-multilingual-MiniLM-L12-v2",
+  "embedding_dim": 384
+}
+```
+
+#### `POST /embed`
+```json
+{
+  "text": "Breaking Bad es una serie de drama"
+}
+```
+
+**Response:**
+```json
+{
+  "embedding": [0.123, -0.456, 0.789, ...]  // 384 números
+}
+```
+
+### Integración con NestJS
+
+El `EmbeddingsService` hace polling cada 30s para verificar si Python está activo:
+
+```typescript
+@Injectable()
+export class EmbeddingsService {
+  private available = false;
+
+  async onModuleInit() {
+    setInterval(() => this.checkHealth(), 30000);
+  }
+
+  async checkHealth() {
+    try {
+      await axios.get('http://localhost:5000/health');
+      this.available = true;
+    } catch {
+      this.available = false;
+    }
+  }
+}
+```
 
 ---
 
-**Desarrollado con ❤️ usando NestJS y tecnologías de la Web Semántica.**
+## 🧪 Scripts Utilitarios
+
+En `backend/scripts/` encontrarás herramientas de mantenimiento:
+
+### `harvest_dbpedia.py`
+Crawler que descarga datos masivos de DBpedia.
+
+```bash
+python scripts/harvest_dbpedia.py
+```
+
+**Configuración:**
+- Descarga 5,000 series por idioma (ES, EN, PT)
+- Guarda en `harvested_data/series_{lang}.json`
+- Usa paginación (LIMIT/OFFSET) para evitar timeouts
+
+### `generate_owl.py`
+Genera archivos OWL de prueba con datos reales.
+
+```bash
+python scripts/generate_owl.py
+```
+
+**Output:** `uploads/tv_series_kb.owl` (300 series, 67 géneros)
+
+### `wipe_db.js`
+⚠️ **PELIGRO:** Borra TODA la base de datos.
+
+```bash
+node scripts/wipe_db.js
+```
+
+---
+
+## 🔄 Flujos Clave del Sistema
+
+### Flujo de Upload Atómico
+
+```typescript
+async saveDocument(filename, content, triples) {
+  // 1. Guardar metadata en Postgres
+  const doc = await this.prisma.document.create({...});
+  
+  try {
+    // 2. Subir RDF crudo a Fuseki
+    await this.sparqlService.uploadRdf(content);
+    
+    // 3. Inyectar metadata vía SPARQL
+    await this.sparqlService.insertTriples(metadataTriples);
+    
+    // 4. Indexar en Elasticsearch
+    await this.elasticsearchService.index(doc);
+    
+  } catch (error) {
+    // ROLLBACK: Borrar de Postgres si algo falla
+    await this.prisma.document.delete({ where: { id: doc.id } });
+    throw error;
+  }
+}
+```
+
+### Flujo de Búsqueda Híbrida
+
+```typescript
+async search(query: string, lang: string) {
+  const results = [];
+  
+  // 1. Búsqueda local (Elasticsearch)
+  const localResults = await this.elasticsearchService.search(query);
+  results.push(...localResults);
+  
+  // 2. Búsqueda semántica (si Python está activo)
+  if (this.embeddingsService.isAvailable()) {
+    const embedding = await this.embeddingsService.generateEmbedding(query);
+    const semanticResults = await this.elasticsearchService.vectorSearch(embedding);
+    results.push(...semanticResults);
+  }
+  
+  // 3. Deduplicar y ordenar
+  return this.deduplicateAndSort(results);
+}
+```
+
+---
+
+## 🐛 Troubleshooting Técnico
+
+### Error: `P1001: Can't reach database server`
+**Causa:** PostgreSQL no está corriendo.
+
+**Solución:**
+```bash
+docker restart semantic-search-postgres-1
+# O verificar logs
+docker logs semantic-search-postgres-1
+```
+
+### Error: `400 Bad Request` al subir OWL
+**Causa:** El archivo RDF/XML contiene entidades no declaradas (ej: `&xsd;anyURI`).
+
+**Solución:**
+El backend ya incluye `preprocessRdfContent()` que expande automáticamente:
+- `&xsd;` → `http://www.w3.org/2001/XMLSchema#`
+- `&rdf;` → `http://www.w3.org/1999/02/22-rdf-syntax-ns#`
+- `&rdfs;` → `http://www.w3.org/2000/01/rdf-schema#`
+- `&owl;` → `http://www.w3.org/2002/07/owl#`
+
+Si persiste, valida tu RDF con [RDF Validator](http://www.w3.org/RDF/Validator/).
+
+### Error: `ECONNREFUSED 127.0.0.1:3030`
+**Causa:** Fuseki no está corriendo o el dataset no existe.
+
+**Solución:**
+```bash
+# Verificar contenedor
+docker ps | grep fuseki
+
+# Acceder a Fuseki UI
+# http://localhost:3030
+# Login: admin / admin123
+# Crear dataset "semantic" (TDB2)
+```
+
+### Error: `Heap Out Of Memory` (Node.js)
+**Causa:** Carga de archivos OWL masivos (>500MB).
+
+**Solución:**
+```bash
+# Aumentar memoria de Node.js
+NODE_OPTIONS="--max-old-space-size=4096" npm run start:dev
+```
+
+### Warning: `Embedding service not available`
+**Causa:** El servicio Python no está corriendo.
+
+**Solución:**
+```bash
+python src/modules/embeddings/embedding-service.py
+```
+
+**Nota:** Es solo un warning. El backend funciona sin él (modo degradado).
+
+---
+
+## 📚 Recursos Adicionales
+
+- [NestJS Documentation](https://docs.nestjs.com/)
+- [Prisma Documentation](https://www.prisma.io/docs)
+- [Apache Jena Fuseki](https://jena.apache.org/documentation/fuseki2/)
+- [SPARQL 1.1 Query Language](https://www.w3.org/TR/sparql11-query/)
+- [RDF 1.1 Primer](https://www.w3.org/TR/rdf11-primer/)
+

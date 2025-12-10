@@ -9,12 +9,14 @@
 ## 📑 Tabla de Contenidos
 
 - [¿Qué es este proyecto?](#-qué-es-este-proyecto)
-- [Características Principales](#-qué-puedes-hacer-con-él)
-- [Stack Tecnológico](#-stack-tecnológico-completo)
+- [Arquitectura del Sistema](#️-arquitectura-del-sistema)
+- [Características Principales](#-características-principales)
+- [Stack Tecnológico](#️-stack-tecnológico-completo)
 - [Prerrequisitos](#-prerrequisitos)
 - [Guía de Inicio Rápido](#-guía-de-inicio-rápido)
 - [Características PWA](#-características-pwa)
 - [Uso del Sistema](#-uso-del-sistema)
+- [Búsqueda Semántica Avanzada](#-búsqueda-semántica-avanzada-opcional)
 - [Despliegue a Producción](#-despliegue-a-producción)
 - [Solución de Problemas](#-solución-de-problemas-comunes)
 - [Documentación Adicional](#-documentación-adicional)
@@ -28,9 +30,54 @@ Este sistema es un **Motor de Búsqueda Semántica Híbrido** diseñado para sup
 
 Combina la precisión de las **Ontologías OWL/RDF** (archivos de conocimiento estructurado) con la vastedad de **DBpedia** (la versión semántica de Wikipedia) para ofrecer resultados ricos y contextualizados.
 
+### ¿Cómo funciona internamente?
+
+A diferencia de los buscadores tradicionales basados en SQL o búsqueda de texto simple, este sistema está diseñado para comprender la **intención** y el **contexto** mediante el uso de **Grafos de Conocimiento**.
+
+Cuando buscas "series de hospitales", el sistema:
+1. **Búsqueda Léxica (Elasticsearch):** Encuentra coincidencias exactas o difusas de "hospitales"
+2. **Búsqueda Semántica (Python + Embeddings):** Convierte tu consulta a un vector matemático y encuentra series similares conceptualmente (ej: "médicos", "medicina", "emergencias")
+3. **Búsqueda Externa (DBpedia):** Consulta la Wikipedia semántica en tiempo real
+4. **Base Offline (15,000 series):** Si no hay internet, busca en la base de datos local pre-cargada
+
 ---
 
-## 🚀 ¿Qué puedes hacer con él?
+## 🏗️ Arquitectura del Sistema
+
+El sistema sigue una arquitectura de **microservicios orquestados** mediante Docker, implementando el patrón de **Persistencia Políglota** (diferentes bases de datos para diferentes necesidades).
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Cliente Web / PWA                        │
+│                  (Next.js 16 App Router)                    │
+└────────────────────┬────────────────────────────────────────┘
+                     │ HTTP/REST
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   NestJS API Gateway                        │
+│              (Orquestador de Servicios)                     │
+└─┬─────────┬─────────┬──────────┬──────────┬────────────────┘
+  │         │         │          │          │
+  ▼         ▼         ▼          ▼          ▼
+┌────┐  ┌──────┐  ┌──────┐  ┌───────┐  ┌─────────┐
+│ PG │  │Fuseki│  │Elastic│  │Python │  │DBpedia  │
+│SQL │  │SPARQL│  │Search│  │  ML   │  │ (LOD)   │
+└────┘  └──────┘  └──────┘  └───────┘  └─────────┘
+Metadata  Grafos   Índices  Embeddings  Federado
+```
+
+### Componentes Clave
+
+- **Frontend (Next.js 16):** SSR/CSR híbrido con PWA, i18n nativo
+- **Backend (NestJS):** API modular con inyección de dependencias
+- **PostgreSQL:** Metadatos de archivos y usuarios (ACID)
+- **Apache Jena Fuseki:** Almacén de tripletas RDF/OWL (SPARQL 1.1)
+- **Elasticsearch:** Búsqueda full-text ultra-rápida
+- **Python (Flask):** Servicio de embeddings con Sentence Transformers
+
+---
+
+## 🚀 Características Principales
 
 ### 1. Descubrimiento Contextual
 Encuentra series basándote en **conceptos y relaciones**, no solo en títulos.
@@ -40,21 +87,32 @@ Encuentra series basándote en **conceptos y relaciones**, no solo en títulos.
 Tienes el control total sobre la "inteligencia" del buscador.
 - **Sube tus propias Ontologías**: Carga archivos `.owl` o `.rdf` para enseñar al sistema sobre nuevas series, géneros o relaciones específicas.
 - **Persistencia de Datos**: Los archivos subidos se procesan, indexan y almacenan permanentemente, creando una base de conocimiento que crece contigo.
+- **Atomic Uploads**: Si falla cualquier paso del proceso, se hace rollback automático para evitar datos inconsistentes.
 
 ### 3. Exploración Global (DBpedia)
 No te limites a tus datos locales.
 - **Búsqueda Federada**: Cada consulta se realiza simultáneamente en tu base de conocimiento local y en la nube de datos enlazados de DBpedia.
 - **Enriquecimiento**: Obtén resúmenes, enlaces y datos adicionales de fuentes externas automáticamente.
+- **Endpoints Multiidioma**: Busca en DBpedia en español (`es.dbpedia.org`), inglés (`dbpedia.org`) o portugués según tu idioma actual.
 
-### 4. Experiencia Multilingüe Fluida
+### 4. Base de Conocimiento Offline (15,000 Series)
+Funciona sin conexión a internet.
+- **Datos Pre-cargados**: 15,000 series de TV harvested de DBpedia (5,000 por idioma: EN, ES, PT).
+- **Búsqueda Indexada**: Índice invertido en memoria RAM para búsquedas ultra-rápidas (<10ms).
+- **Fallback Automático**: Si DBpedia no responde (timeout de 5s), el sistema busca automáticamente en la base offline.
+- **Circuit Breaker Pattern**: Implementación de resiliencia para evitar cascadas de fallos.
+
+### 5. Experiencia Multilingüe Fluida
 Utiliza la plataforma en tu idioma preferido sin barreras.
 - **Español, Inglés y Portugués**: Interfaz totalmente traducida y adaptada.
 - **Rutas Inteligentes**: Navegación intuitiva (`/es/search`, `/en/search`, `/pt/search`) ideal para compartir resultados.
 - **Traducción Automática**: Integración con Google Translate para traducciones en tiempo real.
+- **i18n Nativo**: Implementado con `next-i18next` y middleware de detección automática.
 
-### 5. Progressive Web App (PWA)
+### 6. Progressive Web App (PWA)
 Instala la aplicación y úsala como una app nativa.
 - **Instalable**: Funciona como app de escritorio o móvil.
+- **Service Workers**: Estrategia `Stale-While-Revalidate` para contenido instantáneo.
 - **Modo Offline**: Accede a páginas visitadas sin conexión.
 - **Caché Inteligente**: Almacenamiento local con IndexedDB para traducciones y resultados.
 
@@ -75,7 +133,6 @@ Instala la aplicación y úsala como una app nativa.
 | **react-i18next** | ^16.3.5 | Bindings de i18next para React |
 | **next-i18next** | ^15.4.2 | Integración de i18next con Next.js |
 | **idb** | ^8.0.3 | Wrapper para IndexedDB (caché offline) |
-| **Workbox** | - | Estrategias de caché para PWA |
 
 ### ⚙️ Backend
 
@@ -91,10 +148,6 @@ Instala la aplicación y úsala como una app nativa.
 | **axios** | ^1.6.5 | Cliente HTTP |
 | **natural** | ^6.10.0 | NLP y procesamiento de texto |
 | **compromise** | ^14.10.0 | Procesamiento de lenguaje natural |
-| **nestjs-i18n** | ^10.5.1 | Internacionalización en backend |
-| **Socket.io** | ^4.8.1 | WebSockets para comunicación en tiempo real |
-| **class-validator** | ^0.14.0 | Validación de DTOs |
-| **class-transformer** | ^0.5.1 | Transformación de objetos |
 
 ### 🐍 Python (Servicios Auxiliares)
 
@@ -105,37 +158,19 @@ Instala la aplicación y úsala como una app nativa.
 | **Flask** | 3.0.3 | Microframework para servicios de embeddings |
 | **Flask-CORS** | 5.0.0 | CORS para Flask |
 | **NumPy** | 1.26.4 | Operaciones numéricas |
-| **PyTorch** | 2.0.1 | Backend para transformers |
+| **PyTorch** | 2.9.1 | Backend para transformers |
 
 ### 🗄️ Infraestructura y Bases de Datos
 
-| Servicio | Imagen Docker | Uso |
-|----------|---------------|-----|
-| **PostgreSQL** | `postgres:15-alpine` | Base de datos principal (metadatos, archivos) |
-| **Apache Jena Fuseki** | `stain/jena-fuseki:latest` | Servidor SPARQL para tripletas RDF |
-| **Elasticsearch** | `elasticsearch:8.11.0` | Búsqueda de texto completo y vectorial |
-
-### 🧪 Testing y Desarrollo
-
-| Herramienta | Uso |
-|-------------|-----|
-| **Jest** | Testing unitario y E2E |
-| **ESLint** | Linting de código |
-| **Prettier** | Formateo de código |
-| **ts-jest** | Jest para TypeScript |
-| **Supertest** | Testing de APIs HTTP |
-
-### 📦 DevOps y Despliegue
-
-| Herramienta | Uso |
-|-------------|-----|
-| **Docker** | Containerización de servicios |
-| **Docker Compose** | Orquestación de contenedores |
-| **Git** | Control de versiones |
+| Servicio | Imagen Docker | Puerto | Uso |
+|----------|---------------|--------|-----|
+| **PostgreSQL** | `postgres:15-alpine` | 5432 | Base de datos principal (metadatos, archivos) |
+| **Apache Jena Fuseki** | `stain/jena-fuseki:latest` | 3030 | Servidor SPARQL para tripletas RDF |
+| **Elasticsearch** | `elasticsearch:8.11.0` | 9200 | Búsqueda de texto completo y vectorial |
 
 ---
 
-## 📋 Prerrequisitos
+##  Prerrequisitos
 
 Antes de comenzar, asegúrate de tener instalado:
 
@@ -155,16 +190,6 @@ Antes de comenzar, asegúrate de tener instalado:
 |----------|----------------|-----|
 | **Python** | 3.9+ | Scripts de conversión OWL y servicio de embeddings |
 | **pip** | v21+ | Gestor de paquetes Python |
-
-### Instalación de Dependencias Python (Opcional)
-
-```bash
-# Instalar owlready2 (requerido para conversión OWL/XML)
-pip install owlready2
-
-# Para el servicio de embeddings semánticos
-pip install sentence-transformers flask flask-cors numpy torch
-```
 
 ---
 
@@ -196,17 +221,17 @@ cd backend
 npm install
 
 # Configurar variables de entorno
-# Copia y edita el archivo .env con tus configuraciones
 cp .env.example .env
 
-# Variables importantes a configurar:
-# - DATABASE_URL: Conexión a PostgreSQL
-# - FUSEKI_URL: URL del servidor Fuseki (default: http://localhost:3030)
-# - ELASTICSEARCH_NODE: URL de Elasticsearch (default: http://localhost:9200)
+# Variables importantes a configurar en .env:
+# - DATABASE_URL: postgresql://postgres:postgres123@localhost:5432/semantic_search
+# - FUSEKI_URL: http://localhost:3030
+# - FUSEKI_DATASET: semantic
+# - ELASTICSEARCH_NODE: http://localhost:9200
 
 # Generar cliente Prisma y sincronizar base de datos
 npx prisma generate
-npx prisma db push
+npx prisma migrate deploy
 
 # Iniciar servidor en modo desarrollo
 npm run start:dev
@@ -223,7 +248,6 @@ cd frontend
 npm install
 
 # Configurar variables de entorno
-# Crear archivo .env.local con:
 echo "NEXT_PUBLIC_API_URL=http://localhost:3001" > .env.local
 
 # Iniciar en modo desarrollo
@@ -237,7 +261,47 @@ npm run dev
 1. Accede a `http://localhost:3030`
 2. Login: `admin` / `admin123`
 3. Ve a "Manage datasets" → "Add new dataset"
-4. Nombre: `semantic-search` (tipo: Persistent TDB2)
+4. Nombre: `semantic` (tipo: Persistent TDB2)
+
+---
+
+## 🧠 Búsqueda Semántica Avanzada (Opcional)
+
+Para habilitar la búsqueda por *significado* (vectores matemáticos), activa el servicio de embeddings:
+
+### ¿Por qué Python?
+Aunque Node.js es rápido para I/O, Python es el estándar para ML. Usamos `Flask` para exponer el modelo `sentence-transformers` vía HTTP.
+
+### Instalación
+
+```bash
+cd backend
+
+# Instalar dependencias de IA
+pip install -r requirements-embeddings.txt
+
+# Ejecutar servicio de embeddings
+python src/modules/embeddings/embedding-service.py
+```
+
+El servicio descargará el modelo `paraphrase-multilingual-MiniLM-L12-v2` (~500MB) la primera vez.
+
+### Verificar
+
+```bash
+curl http://localhost:5000/health
+```
+
+Deberías ver:
+```json
+{
+  "status": "healthy",
+  "model": "paraphrase-multilingual-MiniLM-L12-v2",
+  "embedding_dim": 384
+}
+```
+
+> **Nota:** Si no activas este servicio, el buscador funcionará en modo "degradado" (solo búsqueda por palabras clave). Verás un warning en los logs del backend.
 
 ---
 
@@ -276,13 +340,19 @@ npm run dev
    - Ve a `/es/search`
    - En el panel lateral "Base de Conocimiento", sube archivos `.owl` o `.rdf`
    - Los archivos se procesan automáticamente y se indexan
+   - **Archivo de Ejemplo**: Usa `backend/uploads/tv_series_kb.owl` (300 series, 67 géneros)
 
 3. **Búsqueda**:
-   - Ingresa términos como "Person", "Series", o conceptos abstractos
+   - Ingresa términos como "drama", "HBO", "ciencia ficción"
    - El sistema buscará simultáneamente en:
      - 📁 Tu base local de conocimiento
      - 🌐 DBpedia (datos enlazados de Wikipedia)
-   - Los resultados se muestran en dos columnas
+     - 🗄️ Base offline (15,000 series)
+   - Los resultados se muestran con indicadores de color:
+     - 🟢 Verde: DBpedia Online
+     - 🟡 Amarillo: Caché
+     - 🟠 Naranja: Offline
+     - 🔵 Azul: Local (tus archivos)
 
 ### Cambiar Idioma
 
@@ -290,6 +360,21 @@ Usa el selector de idioma en la navegación o accede directamente:
 - Español: `/es/search`
 - English: `/en/search`
 - Português: `/pt/search`
+
+### 10 Búsquedas de Ejemplo
+
+| Búsqueda | Qué encontrarás |
+|----------|-----------------|
+| `drama` | Series dramáticas |
+| `HBO` | Producciones de HBO |
+| `comedia` | Series de comedia |
+| `ciencia ficción` | Series de sci-fi |
+| `Breaking Bad` | Información específica de la serie |
+| `Netflix` | Series de Netflix |
+| `animación` | Series animadas |
+| `2020` | Series que empezaron en 2020 |
+| `crimen` | Series policíacas |
+| `romance` | Series románticas |
 
 ---
 
@@ -318,14 +403,15 @@ docker-compose up --build -d
 - ✅ Apache Fuseki
 - ✅ Elasticsearch
 
-### Opciones de Plataforma
+### Checklist de Seguridad para Producción
 
-| Plataforma | Dificultad | Costo | Ideal Para |
-|------------|------------|-------|------------|
-| **[Railway](./docs/RAILWAY.md)** | ⭐ Fácil | ~$7-15/mes | Principiantes, deploy rápido |
-| **[Dokploy](./docs/DOKPLOY.md)** | ⭐⭐⭐ Medio | ~$6-12/mes | Producción, control total |
-
-📖 **[Ver Comparativa Detallada](./docs/COMPARATIVA.md)**
+- [ ] Cambiar contraseña de Fuseki (default: `admin123`)
+- [ ] Cambiar credenciales de PostgreSQL
+- [ ] Habilitar autenticación en Elasticsearch
+- [ ] Configurar CORS correctamente en backend
+- [ ] Usar HTTPS (requerido para PWA)
+- [ ] Implementar rate limiting
+- [ ] Validar y sanitizar inputs
 
 ---
 
@@ -338,7 +424,8 @@ docker-compose up --build -d
 | Error al subir archivos OWL | Verifica que Python y `owlready2` estén instalados |
 | Puerto 3001 ocupado | Windows: `taskkill /F /IM node.exe` / Linux: `killall node` |
 | Sin resultados de DBpedia | Verifica tu conexión a internet |
-| Error de conexión a DB | Verifica que PostgreSQL esté corriendo: `docker ps` |
+| Error P1001: Can't reach database | Verifica que PostgreSQL esté corriendo: `docker ps` |
+| Error 400 al subir OWL | El archivo contiene entidades XML no declaradas (el backend intenta arreglarlo automáticamente) |
 
 ### Frontend
 
@@ -347,14 +434,16 @@ docker-compose up --build -d
 | PWA no se instala | Ejecuta `npm run build && npm start` (PWA solo en producción) |
 | Errores de Turbopack | El proyecto usa `--webpack` flag para compatibilidad con next-pwa |
 | Puerto 3000 ocupado | Cambia el puerto o cierra otros procesos |
+| Hydration failed | Verificar que no renderizamos `Date.now()` sin `useEffect` |
 
 ### Infraestructura
 
 | Problema | Solución |
 |----------|----------|
-| Fuseki sin dataset | Accede a `http://localhost:3030`, login `admin/admin123`, crea dataset `semantic-search` |
+| Fuseki sin dataset | Accede a `http://localhost:3030`, login `admin/admin123`, crea dataset `semantic` |
 | Elasticsearch no responde | Verifica contenedor: `docker ps` y logs: `docker logs semantic-search-elasticsearch` |
 | Prisma no genera | Ejecuta `npx prisma generate` después de cambios en schema |
+| Embedding service not available | Es solo un warning. El buscador funciona sin él (modo degradado) |
 
 ---
 
@@ -362,26 +451,9 @@ docker-compose up --build -d
 
 | Documento | Descripción |
 |-----------|-------------|
-| **[Backend README](./backend/README.md)** | Arquitectura detallada del backend |
-| **[Frontend README](./frontend/README.md)** | Componentes y rutas del frontend |
-| **[Guía de Instalación](./backend/INSTALLATION.md)** | Instalación paso a paso |
-| **[Guía de Búsqueda Semántica](./backend/SEMANTIC_SEARCH_GUIDE.md)** | Cómo funciona la búsqueda |
-| **[Despliegue con Docker](./DOCKER_GUIDE.md)** | Guía completa de Docker |
-| **[Paso a Paso](./PASO_A_PASO.md)** | Tutorial completo |
-
----
-
-## 🔒 Seguridad en Producción
-
-**Checklist para producción:**
-
-- [ ] Cambiar contraseña de Fuseki (default: `admin123`)
-- [ ] Cambiar credenciales de PostgreSQL
-- [ ] Habilitar autenticación en Elasticsearch
-- [ ] Configurar CORS correctamente en backend
-- [ ] Usar HTTPS (requerido para PWA)
-- [ ] Implementar rate limiting
-- [ ] Validar y sanitizar inputs
+| **[Backend README](./backend/README.md)** | Arquitectura NestJS, módulos, API reference |
+| **[Frontend README](./frontend/README.md)** | Next.js App Router, PWA, componentes |
+| **[EMBEDDINGS_DEPLOYMENT.md](./EMBEDDINGS_DEPLOYMENT.md)** | Guía de despliegue del servicio de IA |
 
 ---
 
