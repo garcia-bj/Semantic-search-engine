@@ -16,11 +16,6 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - backend-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # Apache Jena Fuseki (SPARQL Server)
   fuseki:
@@ -36,11 +31,6 @@ services:
       - fuseki_data:/fuseki
     networks:
       - backend-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3030/$/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # Elasticsearch (for vector search)
   elasticsearch:
@@ -57,11 +47,6 @@ services:
       - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
       - backend-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
 
   # Embeddings Service (Python)
   embeddings:
@@ -79,12 +64,6 @@ services:
       - embeddings_models:/app/models
     networks:
       - backend-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
   # Backend API
   backend:
@@ -96,13 +75,13 @@ services:
     restart: unless-stopped
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
       fuseki:
-        condition: service_healthy
+        condition: service_started
       elasticsearch:
-        condition: service_healthy
+        condition: service_started
       embeddings:
-        condition: service_healthy
+        condition: service_started
     environment:
       NODE_ENV: production
       PORT: ${BACKEND_PORT:-3001}
@@ -118,11 +97,6 @@ services:
       - ./uploads:/app/uploads
     networks:
       - backend-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 networks:
   backend-network:
