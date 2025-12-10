@@ -1,5 +1,5 @@
 # ============================================
-# Stage 1: Build Stage
+# Stage 1: Build Node.js + TypeScript
 # ============================================
 FROM node:20-alpine AS builder
 
@@ -22,17 +22,24 @@ RUN npx prisma generate
 RUN npm run build
 
 # ============================================
-# Stage 2: Production Stage
+# Stage 2: Production Node.js + Python
 # ============================================
 FROM node:20-alpine AS production
 
-# Instalar Python y pip
-RUN apk add --no-cache python3 py3-pip
-
-# Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de dependencias
+# Instalar Python, pip y dependencias de compilación necesarias
+RUN apk add --no-cache \
+    python3 py3-pip \
+    build-base \
+    libffi-dev \
+    openjdk11-jre \
+    bash \
+    git \
+    && python3 -m ensurepip \
+    && pip3 install --upgrade pip
+
+# Copiar archivos de dependencias de Node.js
 COPY package*.json ./
 COPY prisma ./prisma/
 
@@ -45,10 +52,10 @@ RUN npx prisma generate
 # Copiar código compilado desde builder
 COPY --from=builder /app/dist ./dist
 
-# Copiar script de Python
+# Copiar scripts de Python
 COPY scripts ./scripts
 
-# Instalar owlready2 para Python
+# Instalar owlready2
 RUN pip3 install --no-cache-dir owlready2
 
 # Crear directorio para uploads
